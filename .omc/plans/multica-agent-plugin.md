@@ -772,6 +772,34 @@ Multica daemon 启动 leader 时会注入三段 briefing：
 
 MVP v0.1.0 假设 agent 独立完成整个任务。Squad 模式下 leader 做路由决策，member 做执行。插件需要感知这个区别。
 
+### 并发模型（源码研究结论，agent.sql:206-240 + daemon.go:1752）
+
+**这是 Squad 设计的基础，必须理解清楚。**
+
+```
+同一 workspace 内的并发规则：
+  Agent A + Issue #1 ──── 运行中
+  Agent A + Issue #2 ──── 同时运行 ✓（不同 issue，允许并发）
+  Agent A + Issue #1 ──── 阻止！（同一 issue + 同一 agent，强制串行）
+
+  全局上限：max_concurrent_tasks = 6（daemon semaphore，所有 agent 共享）
+
+跨 workspace：
+  完全隔离，agent 硬绑定到 workspace，不存在跨 workspace 共享
+```
+
+**核心结论**：
+1. **不同 issue = 真正并行**。同一个 agent 可以同时跑多个不同 issue 的任务
+2. **同一 issue = 强制串行**。同一 agent + 同一 issue，数据库层保证只有一个任务运行
+3. **跨 workspace 不共享**。agent 是 workspace 级实体
+
+**对 Squad leader 分配策略的直接影响**：
+- `multica issue create --status todo --assignee <member>` 创建子 issue → **真正并行**（不同 issue_id）
+- 同一 issue 连续 @mention 不同 member → 该 member 的任务串行（因为 issue_id 相同时，同一 agent 不能同时跑两个）
+- **最佳实践**：leader 分配并行任务时，应优先创建子 issue，而不是在同一 issue 上 @mention 多次
+
+---
+
 ### 核心设计思路
 
 **启动时角色检测**（在 AGENTS.md / session-start hook 中）：
@@ -798,11 +826,24 @@ fi
 ### 新增文件（v0.2.0）
 
 **`skills/core/squad-workflow.md`**（leader 路径）
-- 如何读取 roster：`multica squad get $MULTICA_SQUAD_ID --output json`
-- 如何分解任务为 stories 并按成员能力分配
-- 如何通过 @mention comment 分派给成员（`[@Name](mention://agent/<uuid>)`）
-- 如何跟踪成员完成状态（轮询 issue comments）
-- 如何汇总结果写回 issue
+- 如何读取 roster：从 briefing 里的 `## Squad Roster` 解析（已注入 Instructions，不需要额外 CLI）
+- 任务分配的两种策略（**核心决策，影响是否真正并行**）：
+  - **策略 A：子 issue 分配**（推荐，真正并行）
+    ```
+    multica issue create --title "子任务：..." --assignee-id <member-uuid> --status todo
+    ```
+    不同 issue_id → 数据库层允许多个 member 真正并行运行
+  - **策略 B：@mention 分配**（适合串行或顺序依赖的任务）
+    ```
+    [@Name](mention://agent/<uuid>) 请处理 X
+    ```
+    同一 issue_id → 同一个 agent 上的任务强制串行，适合有先后依赖的步骤
+- 何时选策略 A vs B：
+  - 任务相互独立、可并行 → 策略 A（子 issue）
+  - 任务有顺序依赖 → 策略 B（@mention，等前一个完成再触发下一个）
+  - 任务太小不值得开子 issue → 策略 B
+- 如何跟踪子 issue 完成状态：`multica issue list --project <id>` 或监听 comment 回报
+- 如何汇总结果写回父 issue
 
 **`skills/core/squad-member-workflow.md`**（member 路径）
 - 收到 @mention 后如何提取任务上下文

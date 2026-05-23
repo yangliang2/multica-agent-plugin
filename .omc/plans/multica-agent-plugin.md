@@ -756,3 +756,100 @@ Claude Code Stop hook 在 daemon 模式被高频触发，每个 issue 写 100+ c
 - ~~多 issue 并发时 `.multica/state/` 的目录布局？~~ → Step 3 决策：per-issue subdir + flock
 - ~~hooks 节流阈值？~~ → 固定 60s mtime
 - ~~AGENTS.md 漂移 CI 检测方式？~~ → hash diff + 关键词冲突双轨（`tools/check-no-conflict.sh`）
+
+---
+
+## v0.2.0 Roadmap — Squad-Aware Mode
+
+### 背景
+
+Multica Squads（小队）是一个多态 assignee 路由层：issue 分配给 squad → leader agent 被唤醒 → leader 判断谁最适合 → @mention 成员 → 成员执行。
+
+Multica daemon 启动 leader 时会注入三段 briefing：
+1. **Squad Operating Protocol**（固定系统规则）
+2. **Squad Roster**（成员花名册 + @mention 链接）
+3. **Squad Instructions**（用户自定义指令）
+
+MVP v0.1.0 假设 agent 独立完成整个任务。Squad 模式下 leader 做路由决策，member 做执行。插件需要感知这个区别。
+
+### 核心设计思路
+
+**启动时角色检测**（在 AGENTS.md / session-start hook 中）：
+```bash
+if [[ -n "$MULTICA_SQUAD_ID" && "$MULTICA_IS_LEADER" == "true" ]]; then
+  # Leader 路径：路由 + 分配，不直接执行
+elif [[ -n "$MULTICA_SQUAD_ID" ]]; then
+  # Member 路径：执行，但 HITL 优先上报 leader
+else
+  # 单 agent 路径：现有 MVP 行为
+fi
+```
+
+### 可以交给 Leader 的判断
+
+| 判断类型 | MVP 现在的处理 | Squad Leader 可以做的 |
+|---------|--------------|---------------------|
+| 任务分解 | 执行 agent 自己拆 stories | Leader 读 roster，按成员能力分配 stories |
+| ≥3次修复失败 | 直接 HITL 给人类 | 先 @mention leader，leader 决定换人还是上报人类 |
+| Verification 失败 | 循环回 execute | Leader 决定同一成员继续 or 换更擅长的成员 |
+| HITL 分级 | 所有 HITL 直接到人类 | 轻量决策 → leader；架构级 → 人类 |
+| Story 并行分配 | 串行或 subagent（单 session） | Leader @mention 多个成员，真正并行（各自独立 daemon session） |
+
+### 新增文件（v0.2.0）
+
+**`skills/core/squad-workflow.md`**（leader 路径）
+- 如何读取 roster：`multica squad get $MULTICA_SQUAD_ID --output json`
+- 如何分解任务为 stories 并按成员能力分配
+- 如何通过 @mention comment 分派给成员（`[@Name](mention://agent/<uuid>)`）
+- 如何跟踪成员完成状态（轮询 issue comments）
+- 如何汇总结果写回 issue
+
+**`skills/core/squad-member-workflow.md`**（member 路径）
+- 收到 @mention 后如何提取任务上下文
+- HITL 分级：`[HITL:leader]` comment @mention leader vs `[HITL:human]` 上报人类
+- 完成后如何回报 leader（@mention + 结果摘要）
+
+**`hooks/session-start.sh` 扩展**
+- 检测 `$MULTICA_SQUAD_ID` / `$MULTICA_IS_LEADER` 环境变量
+- Leader session：注入 roster 信息到 Priority Context
+- Member session：注入"当前被分配的任务来自 leader @mention"上下文
+
+**`capabilities/claude-code.json` 扩展**
+```json
+{
+  "squad-leader": "native",
+  "squad-member": "native"
+}
+```
+
+### HITL 两级分级协议
+
+```
+Member 遇到决策困难时：
+  → 写 [HITL:leader] comment，@mention leader UUID
+  → 设 blocked（等 leader 的 on_comment 唤醒）
+  → Leader 收到通知，判断：
+      简单决策 → 直接回复 comment，member 继续
+      架构级问题 → 写 [HITL:human] comment，@mention 人类成员
+      换人 → @mention 另一个成员接手
+```
+
+### Smoke 场景补充（v0.2.0）
+
+场景 5 — Leader 路由验证：
+- 创建 squad issue，mock squad roster（leader + 2 members）
+- 验证 leader 写分配 comment（含 @mention member UUID）
+- 验证 member 被唤醒后执行正确的子任务
+
+场景 6 — Squad HITL 两级分级：
+- Member 触发 ≥3次修复规则
+- 验证先写 `[HITL:leader]` 而非直接 `[HITL:human]`
+- 验证 leader 回复后 member 能继续
+
+### 依赖的 Multica 环境变量（待确认）
+
+- [ ] `$MULTICA_SQUAD_ID` — 当前 issue 所属 squad ID（daemon 注入）
+- [ ] `$MULTICA_IS_LEADER` — 当前 agent 是否是 squad leader（daemon 注入）
+- [ ] `$MULTICA_SQUAD_ROSTER` — roster JSON（或通过 CLI 查询）
+
+**Open Question**：这些环境变量是否已由 multica daemon 注入，还是需要从 issue metadata 或 CLI 查询？需要与 multica 团队确认（参考 `server/internal/handler/daemon.go` 的 buildSquadLeaderBriefing 实现）。

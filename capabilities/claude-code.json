@@ -10,6 +10,8 @@
     "system-prompt-injection": "wrapper",
     "config-embed": "missing",
     "interactive-ui": "native",
-    "env-passthrough": "native"
+    "env-passthrough": "native",
+    "squad-leader": "native",
+    "squad-member": "native"
   }
 }

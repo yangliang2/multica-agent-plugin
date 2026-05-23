@@ -1,0 +1,14 @@
+{
+  "version": "0.2.0",
+  "task": "multica-agent-plugin v0.2.0 Squad-aware mode",
+  "stories": [
+    { "id": "US-0", "title": "Step 0: CLI anchor extensions + render-anchors hardening", "priority": 1, "passes": true },
+    { "id": "US-1", "title": "Step 1: AGENTS.md Squad Awareness section", "priority": 2, "passes": true },
+    { "id": "US-2", "title": "Step 2: capabilities/claude-code.json squad capability flags", "priority": 3, "passes": true },
+    { "id": "US-3", "title": "Step 3: skills/core/squad-leader-workflow.md", "priority": 4, "passes": true },
+    { "id": "US-4", "title": "Step 4: skills/core/squad-member-workflow.md", "priority": 5, "passes": true },
+    { "id": "US-5", "title": "Step 5: hooks/session-start.sh squad leader detection", "priority": 6, "passes": true },
+    { "id": "US-6", "title": "Step 6: hooks/stop.sh squad activity audit", "priority": 7, "passes": true },
+    { "id": "US-7", "title": "Step 7: Smoke scenarios 5, 6, 7", "priority": 8, "passes": true }
+  ]
+}

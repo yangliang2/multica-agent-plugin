@@ -218,6 +218,164 @@ if [[ -f "${PLUGIN_ROOT}/docs/cli-reference.lock" && -f "${PLUGIN_ROOT}/docs/cli
 fi
 
 # ---------------------------------------------------------------------------
+# Scenario 5 — Leader routing detection
+# ---------------------------------------------------------------------------
+echo ""
+echo "=== Scenario 5: Squad Leader Detection ==="
+
+tmpdir_s5=$(mktemp -d)
+trap 'rm -rf "$tmpdir_s5"' EXIT
+
+cat > "$tmpdir_s5/CLAUDE.md" <<'EOF'
+## Agent Identity
+
+You are a squad leader.
+
+## Squad Operating Protocol
+
+Your job is to coordinate.
+
+## Squad Roster
+
+Leader (you):
+- TestLeader — agent — `[@TestLeader](mention://agent/aaaaaaaa-0000-0000-0000-000000000001)`
+
+Members:
+- Worker1 — agent — `[@Worker1](mention://agent/bbbbbbbb-0000-0000-0000-000000000002)`
+EOF
+
+output_s5=$(MULTICA_WORKDIR="$tmpdir_s5" bash "${PLUGIN_ROOT}/hooks/session-start.sh" 2>/dev/null)
+
+if printf '%s' "$output_s5" | grep -q "Squad Role: LEADER"; then
+  pass "session-start detects squad leader role"
+else
+  fail "session-start did not detect squad leader role"
+fi
+
+if printf '%s' "$output_s5" | grep -q "mention://agent/"; then
+  pass "roster mention links present in additionalContext"
+else
+  fail "roster mention links not found in additionalContext"
+fi
+
+if grep -qF "## Squad Operating Protocol" "${PLUGIN_ROOT}/AGENTS.md" 2>/dev/null; then
+  fail "literal marker found in AGENTS.md (drift guard violation)"
+else
+  pass "no literal marker in AGENTS.md"
+fi
+
+if grep -qF "## Squad Operating Protocol" "${PLUGIN_ROOT}/skills/core/squad-leader-workflow.md" 2>/dev/null; then
+  fail "literal marker found in squad-leader-workflow.md (drift guard violation)"
+else
+  pass "no literal marker in squad-leader-workflow.md"
+fi
+
+# ---------------------------------------------------------------------------
+# Scenario 6 — Member HITL 3-strike escalation
+# ---------------------------------------------------------------------------
+echo ""
+echo "=== Scenario 6: Member HITL 3-strike Rule ==="
+
+if grep -q "3-strike\|3 strike\|third.*bounce\|question_id" "${PLUGIN_ROOT}/skills/core/squad-member-workflow.md" 2>/dev/null; then
+  pass "squad-member-workflow.md contains 3-strike rule"
+else
+  fail "squad-member-workflow.md missing 3-strike rule"
+fi
+
+if grep -q "\[HITL:leader\]" "${PLUGIN_ROOT}/skills/core/squad-member-workflow.md" 2>/dev/null; then
+  pass "squad-member-workflow.md contains [HITL:leader] tier"
+else
+  fail "[HITL:leader] tier missing in squad-member-workflow.md"
+fi
+
+if grep -q "\[HITL:human\]" "${PLUGIN_ROOT}/skills/core/squad-member-workflow.md" 2>/dev/null; then
+  pass "squad-member-workflow.md contains [HITL:human] escalation"
+else
+  fail "[HITL:human] escalation missing in squad-member-workflow.md"
+fi
+
+# ---------------------------------------------------------------------------
+# Scenario 7 — Leader activity-skip audit enforcement
+# ---------------------------------------------------------------------------
+echo ""
+echo "=== Scenario 7: Squad Activity Audit ==="
+
+tmpdir_s7=$(mktemp -d)
+trap 'rm -rf "$tmpdir_s7"' EXIT
+
+cat > "$tmpdir_s7/CLAUDE.md" <<'EOF'
+## Squad Operating Protocol
+test
+EOF
+
+mkdir -p "$tmpdir_s7/.multica/state/test-issue-123"
+
+# Create an active loop.json with old mtime so throttle does not fire
+cat > "$tmpdir_s7/.multica/state/test-issue-123/loop.json" <<'LOOP'
+{
+  "active": true,
+  "iteration": 1,
+  "max_iterations": 50,
+  "issue_id": "test-issue-123",
+  "phase": "execution",
+  "stories": [
+    {"id": "S1", "title": "story one", "acceptance": "criterion", "passes": false}
+  ]
+}
+LOOP
+touch -t 200001010000 "$tmpdir_s7/.multica/state/test-issue-123/loop.json"
+
+# Trigger DONE branch so stop.sh exits 0 and squad_leader_audit runs;
+# no squad-activity.marker present — audit warning should be written.
+MULTICA_WORKDIR="$tmpdir_s7" \
+MULTICA_ISSUE_ID="test-issue-123" \
+CLAUDE_TOOL_OUTPUT="$(printf '<promise>DONE</promise>')" \
+  bash "${PLUGIN_ROOT}/hooks/stop.sh" > /dev/null 2>&1
+stop_exit=$?
+
+if [[ $stop_exit -eq 0 ]]; then
+  pass "stop.sh exits 0 even when squad activity was skipped"
+else
+  fail "stop.sh exited $stop_exit (should always be 0)"
+fi
+
+if [[ -f "$tmpdir_s7/.multica/state/squad-audit-warning" ]]; then
+  pass "squad-audit-warning written when activity marker absent"
+else
+  fail "squad-audit-warning not written"
+fi
+
+# Verify no warning written when marker is present
+touch "$tmpdir_s7/.multica/state/test-issue-123/squad-activity.marker"
+rm -f "$tmpdir_s7/.multica/state/squad-audit-warning"
+
+# Restore active loop.json with old mtime for second run
+cat > "$tmpdir_s7/.multica/state/test-issue-123/loop.json" <<'LOOP'
+{
+  "active": true,
+  "iteration": 1,
+  "max_iterations": 50,
+  "issue_id": "test-issue-123",
+  "phase": "execution",
+  "stories": [
+    {"id": "S1", "title": "story one", "acceptance": "criterion", "passes": false}
+  ]
+}
+LOOP
+touch -t 200001010000 "$tmpdir_s7/.multica/state/test-issue-123/loop.json"
+
+MULTICA_WORKDIR="$tmpdir_s7" \
+MULTICA_ISSUE_ID="test-issue-123" \
+CLAUDE_TOOL_OUTPUT="$(printf '<promise>DONE</promise>')" \
+  bash "${PLUGIN_ROOT}/hooks/stop.sh" > /dev/null 2>&1
+
+if [[ ! -f "$tmpdir_s7/.multica/state/squad-audit-warning" ]]; then
+  pass "no warning written when activity marker present"
+else
+  fail "spurious warning written when activity marker was present"
+fi
+
+# ---------------------------------------------------------------------------
 # Summary
 # ---------------------------------------------------------------------------
 echo ""

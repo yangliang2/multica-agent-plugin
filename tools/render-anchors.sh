@@ -68,7 +68,20 @@ for file in "$@"; do
     render_file "${file}" > "${tmp}"
     mv "${tmp}" "${file}"
     echo "Rendered: ${file}"
+    output_file="${file}"
   else
-    render_file "${file}"
+    output_file="$(mktemp)"
+    render_file "${file}" > "${output_file}"
+    cat "${output_file}"
+  fi
+
+  if grep -qE '<<cli:[a-zA-Z._]+>>' "${output_file}"; then
+    echo "ERROR: unresolved anchors in ${output_file}:" >&2
+    grep -E '<<cli:[a-zA-Z._]+>>' "${output_file}" >&2
+    exit 2
+  fi
+
+  if [[ "${INPLACE}" -eq 0 ]]; then
+    rm -f "${output_file}"
   fi
 done

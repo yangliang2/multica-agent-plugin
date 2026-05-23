@@ -19,6 +19,19 @@
 - [x] ~~AGENTS.md 漂移 CI 检测的具体方式（hash diff 还是关键词冲突扫描）？~~ → **Decision**: 双轨：(1) AGENTS.md hash + `docs/cli-reference.lock` diff guard；(2) `tools/check-no-conflict.sh` 扫描 CLAUDE.md/GEMINI.md/capabilities/** 与 AGENTS.md 关键词冲突
 - [x] ~~Kimi-CLI 是否能读取 multica CLI 的环境变量？~~ → **Decision (C2 fix)**: Kimi daemon ACP **不读盘也不必读 env**；AGENTS.md 内容通过 `opts.SystemPrompt` JSON-RPC 字段注入；env 仅用于 launcher 配置
 
+## v0.2.0-squad-aware - 2026-05-23
+
+### Active (need answers before or during v0.2.0 Steps 5–6)
+- [ ] **Briefing-to-disk path**: does multica daemon write the appended squad briefing to `$MULTICA_WORKDIR/.multica/briefing.md` (or similar) so SessionStart hook can read it? — Decides whether Step 5 marker detection works as designed. Fallback options if no: (a) read a `$CLAUDE_AGENT_INSTRUCTIONS`-style env var if daemon exports it; (b) accept a daemon-written `.multica/role` flag file; (c) inline marker into agent's `instructions.md` Claude Code already loads
+- [ ] **`multica squad activity` CLI surface**: confirm subcommand syntax (`multica squad activity <issue-id> <outcome> --reason "..."`), valid outcomes (`action`, `no_action`, `failed`), and whether `multica squad activity log <issue-id>` exists — Decides smoke scenario 5 assertion and the `<<cli:squad.activity>>` anchor in cli-reference.md
+- [ ] **Protocol-text SemVer commitment**: what is multica's stability commitment for the literal heading `## Squad Operating Protocol`? — Decides whether to pin a min daemon version in CHANGELOG/KNOWN-LIMITATIONS for v0.2.0
+- [ ] **Mock multica server squad fixtures**: does the v0.1.0 smoke harness already support squad/squad_members/child-issue creation? — If not, scenarios 5–6 are gated by `MULTICA_SMOKE_FULL=1` until the fixture lands; affects Step 6 timeline
+- [ ] **Orphan-squad behavior**: when a leader is removed mid-flow, does multica reassign or close the issue? — Decides whether member skill's fallback to `[HITL:human]` is correct, or if there is a different recovery path
+- [ ] **Roster staleness window**: is the roster re-injected on every leader claim (so member adds/removals reflect on the next turn)? — If yes, no plugin work; if no, document the window in leader skill
+- [ ] **Child-issue parent backlink**: when a leader creates a child issue (Strategy A), does multica auto-link the child to the parent for rollup, or must the leader include the parent issue ID in the child description? — Affects "Tracking & rollup" guidance in `skills/core/squad-leader-workflow.md`
+
+---
+
 ### From Analyst (Critic) — folded into rev2 plan
 - [x] C1: CLI 命令字面错误 → Step 0 锁定 `docs/cli-reference.md` + anchor 引用
 - [x] C2: Kimi adapter 走 ACP `opts.SystemPrompt` 而非 cp → Step 4a Kimi adapter 重写为 daemon launcher

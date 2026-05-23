@@ -105,3 +105,24 @@ See `skills/core/hitl-protocol.md` for full protocol.
 - Never hold a file lock or network connection across a status=`blocked` exit.
 - The daemon reaper is the sole owner of timeout enforcement. Skills must not implement their own timeouts.
 - Each invocation is stateless except for what is persisted in issue comments and metadata.
+
+---
+
+## Squad Awareness
+
+When the Multica daemon assigns an issue to a squad, it writes a runtime config
+to disk containing a Squad Operating Protocol header and a Squad Roster. Detect
+your role by reading the on-disk config written at session start.
+
+**Role detection** (check `${MULTICA_WORKDIR}/CLAUDE.md` at session start):
+- The Squad Operating Protocol header is present → you are the **Squad Leader**
+  - Load `skills/core/squad-leader-workflow.md`
+  - Coordinate, do NOT implement; delegate via roster members
+  - Call `<<cli:squad.activity>>` at every turn end (mandatory)
+- No such header → **Squad Member** (triggered by leader @mention) or single-agent
+  - Squad Member: load `skills/core/squad-member-workflow.md`
+  - Single-agent: continue standard 5-phase workflow
+
+**HITL in squad context:**
+- Members escalate to `[HITL:leader]` first (not `[HITL:human]`)
+- After 3 bounces with same `question_id` → escalate to `[HITL:human]`

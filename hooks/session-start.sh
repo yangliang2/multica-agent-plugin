@@ -132,6 +132,33 @@ if [[ -n "$issue_id" ]]; then
   fi
 fi
 
+# ── Section 4: Squad leader detection ──────────────────────────────────────
+SQUAD_PROTOCOL_MARKER="## Squad Operating Protocol"
+claude_md="${MULTICA_WORKDIR}/CLAUDE.md"
+
+if [[ -f "$claude_md" ]] && grep -qF "$SQUAD_PROTOCOL_MARKER" "$claude_md"; then
+  # Extract roster summary (capped at 800 bytes)
+  roster_raw=$(awk '/^## Squad Roster/,/^## [^S]/' "$claude_md" | head -c 800)
+
+  # Check for pending audit warning from previous turn
+  audit_warning=""
+  warn_file="${MULTICA_WORKDIR}/.multica/state/squad-audit-warning"
+  if [[ -f "$warn_file" ]]; then
+    audit_warning="WARNING: Previous turn ended without calling multica squad activity. This is MANDATORY. Call it now before doing anything else."
+    rm -f "$warn_file"
+  fi
+
+  squad_part="Squad Role: LEADER"
+  if [[ -n "$audit_warning" ]]; then
+    squad_part="${audit_warning}"$'\n'"${squad_part}"
+  fi
+  if [[ -n "$roster_raw" ]]; then
+    squad_part="${squad_part}"$'\n'"Roster (excerpt):"$'\n'"${roster_raw}"
+  fi
+
+  context_parts+=("## Squad Context"$'\n'"$squad_part")
+fi
+
 # ---------------------------------------------------------------------------
 # Assemble and output JSON
 # ---------------------------------------------------------------------------

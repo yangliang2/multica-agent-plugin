@@ -288,3 +288,6 @@ The following anchors are available for use with `tools/render-anchors.sh`:
 | `<<cli:issue.create>>` | `multica issue create --title "..." --assignee "..."` |
 | `<<cli:issue.assign>>` | `multica issue assign <id> --to "..."` |
 | `<<cli:issue.metadata.set>>` | `multica issue metadata set <issue-id> --key <k> --value <v>` |
+| `<<cli:squad.activity>>` | `multica squad activity <issue-id> <outcome> --reason "..."` — outcomes: `action`, `no_action`, `failed` |
+| `<<cli:issue.create.child>>` | `multica issue create --title "..." --status todo --assignee-id <uuid>` |
+| `<<cli:issue.comment.list.thread>>` | `multica issue comment list <issue-id> --thread <comment-id> --tail 30 --output json` |

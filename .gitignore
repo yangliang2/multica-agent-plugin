@@ -1,0 +1,4 @@
+.multica/
+.omc/state/
+.omc/handoffs/
+*.local

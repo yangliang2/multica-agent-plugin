@@ -1,0 +1,15 @@
+{
+  "harness": "claude-code",
+  "archetype": "file-loaded",
+  "capabilities": {
+    "hooks": "native",
+    "destructive-guard": "native",
+    "parallel": "native",
+    "persistent-loop": "native",
+    "fs-load-agents-md": "native",
+    "system-prompt-injection": "wrapper",
+    "config-embed": "missing",
+    "interactive-ui": "native",
+    "env-passthrough": "native"
+  }
+}

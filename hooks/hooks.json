@@ -1,0 +1,23 @@
+{
+  "hooks": {
+    "Stop": [
+      {
+        "type": "command",
+        "command": "${MULTICA_PLUGIN_ROOT}/hooks/stop.sh"
+      }
+    ],
+    "PreToolUse": [
+      {
+        "type": "command",
+        "command": "${MULTICA_PLUGIN_ROOT}/hooks/pre-tool.sh"
+      }
+    ],
+    "SessionStart": [
+      {
+        "type": "command",
+        "command": "${MULTICA_PLUGIN_ROOT}/hooks/session-start.sh",
+        "matcher": "startup|clear|compact"
+      }
+    ]
+  }
+}

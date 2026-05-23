@@ -852,4 +852,34 @@ Member 遇到决策困难时：
 - [ ] `$MULTICA_IS_LEADER` — 当前 agent 是否是 squad leader（daemon 注入）
 - [ ] `$MULTICA_SQUAD_ROSTER` — roster JSON（或通过 CLI 查询）
 
-**Open Question**：这些环境变量是否已由 multica daemon 注入，还是需要从 issue metadata 或 CLI 查询？需要与 multica 团队确认（参考 `server/internal/handler/daemon.go` 的 buildSquadLeaderBriefing 实现）。
+**源码研究结论（无需确认，已从代码得出）**：
+
+**1. 角色识别方式**：不是环境变量，是通过 Instructions 文本检测。
+```go
+// daemon.go:2260
+IsSquadLeader: strings.Contains(instructions, "## Squad Operating Protocol"),
+```
+daemon 检测 `resp.Agent.Instructions` 是否包含 `"## Squad Operating Protocol"` 字符串来判断是否是 leader。**插件不需要读环境变量，只需在 session-start hook 里检测 AGENTS.md / Instructions 是否含这个标记。**
+
+**2. Leader briefing 注入路径**：通过 `--append-system-prompt`（claude 的 `AgentInstructions` 字段），不是环境变量。briefing 内容包含：
+- `## Squad Operating Protocol`（固定规则，含 `multica squad activity` 命令）
+- `## Squad Roster`（成员花名册，含完整 `[@Name](mention://agent/<uuid>)` markdown）
+- `## Squad Instructions`（用户自定义，可选）
+
+**3. Leader 的核心工作流**（从 runtime_config.go:373-380 得出）：
+- Assignment-triggered：读 issue → 设 in_progress → **判断委派谁** → 写 comment @mention → `multica squad activity <id> action --reason "..."` → 设 in_review
+- Comment-triggered（收到成员回报）：读新 comment → 决定是否需要行动 → 若 no_action：只调 `multica squad activity <id> no_action --reason "..."` 然后**静默退出**（不写任何 comment）
+
+**4. Member 的识别**：Member agent 启动时没有 `## Squad Operating Protocol` 在 Instructions 里，但 runtime_config 对 member 注入了 mention 规则（避免回复时 @mention 触发循环）。Member 自己不需要特殊检测，只需按正常执行流程工作。
+
+**5. `multica squad activity` 命令**：Leader 每次 turn 结束时必须调用，outcome 值：`action` / `no_action` / `failed`。这是强制的，不是可选的。插件的 squad-workflow.md 必须包含这个约束。
+
+**6. 子 issue 委派 vs @mention 委派**（runtime_config.go:392）：
+- `--status todo` + agent assignee = 立即触发（assignment IS the trigger）
+- @mention = 也触发
+- 两个不能同时用于同一工作，否则 agent 执行两次
+
+**v0.2.0 设计修正**：
+- 删除 `$MULTICA_IS_LEADER` 环境变量方案
+- session-start hook 改为：检测 `$MULTICA_PLUGIN_ROOT/skills/advanced/persistence-loop.md` + grep Instructions 是否含 `## Squad Operating Protocol`
+- `squad-workflow.md` 核心约束：每 turn 必须调 `multica squad activity`，no_action 时静默退出不写 comment

@@ -788,15 +788,36 @@ MVP v0.1.0 假设 agent 独立完成整个任务。Squad 模式下 leader 做路
   完全隔离，agent 硬绑定到 workspace，不存在跨 workspace 共享
 ```
 
+**三层并发控制（源码研究，task.go:767 + agent.sql:206 + daemon.go:1752）**：
+
+**层 1：per-agent `max_concurrent_tasks`（agent 级别，最关键）**
+```go
+// task.go:767 — 每次 claim 前检查
+running, _ := s.Queries.CountRunningTasks(ctx, agentID)
+if running >= int64(agent.MaxConcurrentTasks) {
+    return nil, nil // No capacity — 不 claim，等待
+}
+```
+- 每个 agent 独立计数，默认上限 **6**
+- 同一个 agent 被分配 N 个不同 issue → 最多同时跑 6 个，第 7 个排队
+
+**层 2：per-(agent, issue) 串行（SQL 层）**
+- 同一个 agent + 同一个 issue → 强制串行，防重复执行
+
+**层 3：daemon 全局 semaphore**
+- daemon 进程全局 `MaxConcurrentTasks`（默认 6），所有 runtime 共享
+
 **核心结论**：
-1. **不同 issue = 真正并行**。同一个 agent 可以同时跑多个不同 issue 的任务
-2. **同一 issue = 强制串行**。同一 agent + 同一 issue，数据库层保证只有一个任务运行
-3. **跨 workspace 不共享**。agent 是 workspace 级实体
+1. **子 issue 分配给同一个 agent** → 受 per-agent `max_concurrent_tasks` 限制，默认最多 6 个并发，第 7 个排队
+2. **子 issue 分配给不同 agent** → 完全并行，互不干扰（每个 agent 独立计数）
+3. **同一 issue + 同一 agent** → 强制串行
+4. **跨 workspace** → 完全隔离，agent 硬绑定到 workspace
 
 **对 Squad leader 分配策略的直接影响**：
-- `multica issue create --status todo --assignee <member>` 创建子 issue → **真正并行**（不同 issue_id）
-- 同一 issue 连续 @mention 不同 member → 该 member 的任务串行（因为 issue_id 相同时，同一 agent 不能同时跑两个）
-- **最佳实践**：leader 分配并行任务时，应优先创建子 issue，而不是在同一 issue 上 @mention 多次
+- 分配给**不同 member agent** 的子 issue → 真正并行（推荐，每个 member 独立计数）
+- 分配给**同一 member agent** 的多个子 issue → 最多并发 6 个（受该 agent 的 max_concurrent_tasks 限制）
+- 同一 issue 上连续 @mention 同一个 agent → 串行（SQL 层锁）
+- **最佳实践**：Squad 里不同 member 各自负责不同子任务，这才是真正的并行。把所有子任务都堆给同一个 member 只能拿到 6 个并发，还不如直接把 max_concurrent_tasks 调大
 
 ---
 

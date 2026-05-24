@@ -376,6 +376,125 @@ else
 fi
 
 # ---------------------------------------------------------------------------
+# Scenario 8 — curate-memory.sh dedup test
+# ---------------------------------------------------------------------------
+echo ""
+echo "=== Scenario 8: curate-memory.sh deduplication ==="
+
+tmpdir_s8=$(mktemp -d)
+trap 'rm -rf "$tmpdir_s8"' EXIT
+
+mkdir -p "$tmpdir_s8/.multica"
+# Write two entries with same key (old one first, new one second)
+cat > "$tmpdir_s8/.multica/learnings.jsonl" << 'EOF'
+{"ts":"2020-01-01T00:00:00Z","key":"test-config","insight":"old insight","confidence":8,"files":[]}
+{"ts":"2026-01-01T00:00:00Z","key":"test-config","insight":"new insight","confidence":9,"files":[]}
+{"ts":"2026-01-01T00:00:00Z","key":"other-key","insight":"other insight","confidence":7,"files":[]}
+EOF
+
+MULTICA_WORKDIR="$tmpdir_s8" bash "${PLUGIN_ROOT}/tools/curate-memory.sh" >/dev/null 2>&1
+
+# Verify: only 2 unique keys remain (latest per key)
+count=$(wc -l < "$tmpdir_s8/.multica/learnings.jsonl")
+if [[ "$count" -eq 2 ]]; then
+  pass "curate-memory dedup: 3 entries → 2 unique keys"
+else
+  fail "curate-memory dedup: expected 2 entries, got $count"
+fi
+
+# Verify: surviving test-config entry has new insight
+if grep -q "new insight" "$tmpdir_s8/.multica/learnings.jsonl"; then
+  pass "curate-memory dedup: latest entry preserved"
+else
+  fail "curate-memory dedup: latest entry not preserved"
+fi
+
+# ---------------------------------------------------------------------------
+# Scenario 9 — staleness detection
+# ---------------------------------------------------------------------------
+echo ""
+echo "=== Scenario 9: Session-Start Staleness Detection ==="
+
+tmpdir_s9=$(mktemp -d)
+trap 'rm -rf "$tmpdir_s9"' EXIT
+
+mkdir -p "$tmpdir_s9/.multica"
+# Create a learning that references a non-existent file
+cat > "$tmpdir_s9/.multica/learnings.jsonl" << EOF
+{"ts":"2026-01-01T00:00:00Z","key":"stale-learning","insight":"uses deleted file","confidence":8,"files":["$tmpdir_s9/nonexistent.py"]}
+{"ts":"2026-01-01T00:00:00Z","key":"fresh-learning","insight":"no files referenced","confidence":7,"files":[]}
+EOF
+
+output=$(MULTICA_WORKDIR="$tmpdir_s9" bash "${PLUGIN_ROOT}/hooks/session-start.sh" 2>/dev/null)
+
+if echo "$output" | grep -q "possibly stale"; then
+  pass "session-start marks missing-file learning as stale"
+else
+  fail "session-start did not mark missing-file learning as stale"
+fi
+
+# Extract the additionalContext text and check fresh-learning line individually
+fresh_line=$(echo "$output" \
+  | python3 -c "import sys,json; d=json.load(sys.stdin); print(d['hookSpecificOutput']['additionalContext'])" 2>/dev/null \
+  | grep "fresh-learning")
+if echo "$fresh_line" | grep -qv "possibly stale"; then
+  pass "session-start does not mark no-files learning as stale"
+else
+  fail "session-start incorrectly marked no-files learning as stale"
+fi
+
+# ---------------------------------------------------------------------------
+# Scenario 10 — notepad Working Memory prune
+# ---------------------------------------------------------------------------
+echo ""
+echo "=== Scenario 10: Notepad Working Memory Prune ==="
+
+tmpdir_s10=$(mktemp -d)
+trap 'rm -rf "$tmpdir_s10"' EXIT
+
+# Create notepad with old Working Memory entry
+old_ts=$(date -d '8 days ago' +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || \
+         date -v-8d +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || echo "2020-01-01T00:00:00Z")
+new_ts=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+
+mkdir -p "$tmpdir_s10/.multica"
+cat > "$tmpdir_s10/.multica/notepad.md" << EOF
+## Priority Context
+Important context here.
+
+## Working Memory
+[${old_ts}] This is old, should be pruned.
+[${new_ts}] This is new, should be kept.
+
+## Manual Notes
+Permanent note.
+EOF
+
+# Create loop.json to trigger DONE path; backdate mtime so throttle check passes
+mkdir -p "$tmpdir_s10/.multica/state/test-prune-issue"
+cat > "$tmpdir_s10/.multica/state/test-prune-issue/loop.json" << 'EOF'
+{"active": true, "iteration": 1, "phase": "execution", "max_iterations": 50}
+EOF
+touch -t 200001010000 "$tmpdir_s10/.multica/state/test-prune-issue/loop.json"
+
+# Run stop.sh with DONE signal
+MULTICA_WORKDIR="$tmpdir_s10" MULTICA_ISSUE_ID="test-prune-issue" \
+  CLAUDE_TOOL_OUTPUT="<promise>DONE</promise>" bash "${PLUGIN_ROOT}/hooks/stop.sh" 2>/dev/null || true
+
+if grep -q "This is new" "$tmpdir_s10/.multica/notepad.md" && \
+   ! grep -q "This is old" "$tmpdir_s10/.multica/notepad.md"; then
+  pass "notepad prune removed old Working Memory entry, kept new one"
+else
+  fail "notepad prune did not work correctly"
+fi
+
+if grep -q "Permanent note" "$tmpdir_s10/.multica/notepad.md"; then
+  pass "notepad prune preserved Manual Notes"
+else
+  fail "notepad prune removed Manual Notes"
+fi
+
+# ---------------------------------------------------------------------------
 # Summary
 # ---------------------------------------------------------------------------
 echo ""

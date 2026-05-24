@@ -1,97 +1,78 @@
 {
-  "version": "0.3.0",
-  "task": "multica-agent-plugin v0.3.0 reliability + subagent dispatch",
+  "version": "0.4.0",
+  "task": "multica-agent-plugin v0.4.0 knowledge management upgrade",
   "stories": [
     {
       "id": "US-P0-1",
-      "title": "stop.sh: direct squad activity call on leader skip",
+      "title": "tools/curate-memory.sh: dedup + decay + archive",
       "priority": 1,
       "passes": false,
       "acceptanceCriteria": [
-        "hooks/stop.sh directly calls 'multica squad activity <issue_id> failed --reason activity-not-recorded-by-agent' when leader marker detected AND squad-activity.marker absent",
-        "The direct call is made BEFORE writing squad-audit-warning (not instead of it)",
-        "multica CLI absence is handled gracefully (fall back to warning-only if multica not found)",
-        "bash -n hooks/stop.sh passes",
-        "shellcheck hooks/stop.sh reports no error-level findings",
-        "Smoke: stop.sh with leader marker + no activity marker → squad-audit-warning written AND multica call attempted"
+        "tools/curate-memory.sh exists and is executable",
+        "Script deduplicates learnings.jsonl by key: only the latest entry per key is kept",
+        "Script applies confidence decay: entries older than 90 days get confidence -= 2, older than 180 days get confidence -= 4",
+        "Script archives entries with confidence < 3 to .multica/learnings-archive.jsonl",
+        "All writes are atomic (mktemp + mv)",
+        "bash -n tools/curate-memory.sh passes",
+        "shellcheck tools/curate-memory.sh reports no error-level findings",
+        "Script is idempotent: running twice produces the same result"
       ]
     },
     {
       "id": "US-P0-2",
-      "title": "session-start.sh: inject 3-strike counts + model env vars",
+      "title": "stop.sh: git commit learnings + notepad prune on completion",
       "priority": 2,
       "passes": false,
       "acceptanceCriteria": [
-        "hooks/session-start.sh reads .multica/state/<issue_id>/hitl-bounces.json and injects bounce counts into additionalContext when present",
-        "Format injected: 'HITL bounce count for <question_id>: N/3 (tier: leader|human)'",
-        "hooks/session-start.sh reads capabilities/claude-code.json model_routing field and exports MULTICA_MODEL_FAST, MULTICA_MODEL_STD, MULTICA_MODEL_DEEP env vars",
-        "When capabilities file or model_routing field absent: env vars default to haiku/sonnet/opus",
-        "bash -n hooks/session-start.sh passes",
-        "shellcheck hooks/session-start.sh reports no error-level findings",
-        "Smoke: fixture hitl-bounces.json with question_id=q1 count=2 → additionalContext contains 'bounce count for q1: 2/3'"
+        "hooks/stop.sh on DONE path: git commits .multica/learnings.jsonl when it exists and has uncommitted changes",
+        "hooks/stop.sh on DONE path: prunes Working Memory entries older than 7 days from .multica/notepad.md",
+        "git commit uses message 'chore(knowledge): update learnings [skip ci]'",
+        "All git operations are guarded (fail silently if not a git repo or git unavailable)",
+        "Notepad prune preserves Priority Context and Manual Notes sections unchanged",
+        "bash -n hooks/stop.sh passes",
+        "shellcheck hooks/stop.sh reports no error-level findings",
+        "stop.sh still exits 0 on DONE path and exit 2 on loop-active path"
       ]
     },
     {
       "id": "US-P0-3",
-      "title": "squad-member-workflow.md: bounce count written to file",
+      "title": "session-start.sh: stat-based staleness detection for learnings",
       "priority": 3,
       "passes": false,
       "acceptanceCriteria": [
-        "skills/core/squad-member-workflow.md instructs member to write bounce count to .multica/state/<issue_id>/hitl-bounces.json on every [HITL:leader] escalation",
-        "File format documented: {\"<question_id>\": {\"count\": N, \"last_at\": \"<ISO8601>\", \"tier\": \"leader\"}}",
-        "question_id stability rule retained: generate once, reuse across bounces",
-        "Instruction uses <<cli:issue.metadata.set>> as fallback only, file write is primary",
-        "grep -E 'multica (issue|squad) [a-zA-Z]' skills/core/squad-member-workflow.md returns 0 (all CLI via anchors)"
+        "hooks/session-start.sh checks source files listed in each learning's 'files' field",
+        "When a source file does not exist: marks learning as '[possibly stale]' in injected context",
+        "When a source file mtime is newer than learning 'ts': marks learning as '[possibly stale]'",
+        "Stale detection only runs on entries that have non-empty 'files' field",
+        "Non-stale entries are injected normally without any staleness marker",
+        "bash -n hooks/session-start.sh passes",
+        "shellcheck hooks/session-start.sh reports no error-level findings"
       ]
     },
     {
       "id": "US-P1-1",
-      "title": "capabilities/claude-code.json: model_routing field",
+      "title": "stop.sh: memory consolidation prompt on completion",
       "priority": 4,
       "passes": false,
       "acceptanceCriteria": [
-        "capabilities/claude-code.json contains model_routing object with fast, standard, deep keys",
-        "Default values: fast=haiku, standard=sonnet, deep=opus",
-        "jq -e .model_routing capabilities/claude-code.json passes",
-        "jq -e . capabilities/claude-code.json passes (valid JSON)"
+        "hooks/stop.sh on DONE path: writes a memory consolidation prompt to .multica/state/consolidation-prompt.txt",
+        "Prompt instructs a haiku subagent to: read recent issue comments, extract valuable learnings, append to .multica/learnings.jsonl in correct JSONL format",
+        "Prompt includes the format spec: {ts, skill, type, key, insight, confidence, source, branch, commit, files}",
+        "Prompt instructs: only write high-confidence (>=7) learnings, skip uncertain ones",
+        "File is written only when MULTICA_ISSUE_ID is set (issue context exists)",
+        "stop.sh still exits correctly after writing the prompt file"
       ]
     },
     {
       "id": "US-P1-2",
-      "title": "skills/advanced/subagent-dispatch.md: new skill",
+      "title": "smoke: v0.4.0 knowledge management scenarios",
       "priority": 5,
       "passes": false,
       "acceptanceCriteria": [
-        "skills/advanced/subagent-dispatch.md exists and is <=200 lines",
-        "File contains model routing table: haiku (mechanical/single-file), sonnet (standard/multi-file), opus (architecture/review)",
-        "File contains fresh context principle: subagent prompt must include complete task context, never 'see issue for details'",
-        "File contains Task() call examples with subagent_type and model parameters",
-        "File references $MULTICA_MODEL_FAST, $MULTICA_MODEL_STD, $MULTICA_MODEL_DEEP env vars",
-        "File contains output format rule: subagent writes result to file or multica comment, not relied on return value",
-        "File contains Daemon-Safe Notes section"
-      ]
-    },
-    {
-      "id": "US-P2",
-      "title": "multica-workflow.md: context budget awareness",
-      "priority": 6,
-      "passes": false,
-      "acceptanceCriteria": [
-        "skills/core/multica-workflow.md contains context budget rules in a dedicated section",
-        "Rules specify: >35% remaining = normal, <=35% = checkpoint before new work, <=25% = summarize and set blocked",
-        "Rules specify how to checkpoint: write progress comment via <<cli:issue.comment.add>> then continue or set blocked",
-        "Daemon-Safe Notes section updated to mention context budget awareness"
-      ]
-    },
-    {
-      "id": "US-SMOKE",
-      "title": "Smoke: all 44+ tests pass after v0.3.0 changes",
-      "priority": 7,
-      "passes": false,
-      "acceptanceCriteria": [
-        "bash tests/smoke/run-claude.sh exits 0 with FAIL: 0",
-        "All pre-existing scenarios (1-7) still pass",
-        "No regression in v0.1.0 or v0.2.0 behavior"
+        "tests/smoke/run-claude.sh contains Scenario 8: curate-memory.sh dedup test (two entries with same key, verify only latest remains after curate)",
+        "tests/smoke/run-claude.sh contains Scenario 9: staleness detection (fixture learning with non-existent source file, verify '[possibly stale]' appears in session-start output)",
+        "tests/smoke/run-claude.sh contains Scenario 10: notepad prune (fixture notepad with 8-day-old Working Memory entry, run stop.sh DONE path, verify old entry removed)",
+        "bash tests/smoke/run-claude.sh exits 0 with FAIL: 0 (all scenarios including 1-10)"
       ]
     }
   ]

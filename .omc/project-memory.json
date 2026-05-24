@@ -1,0 +1,121 @@
+{
+  "version": "1.0.0",
+  "lastScanned": 1779625403549,
+  "projectRoot": "/home/peter/project/research/multica-agent-plugin",
+  "techStack": {
+    "languages": [],
+    "frameworks": [],
+    "packageManager": null,
+    "runtime": null
+  },
+  "build": {
+    "buildCommand": null,
+    "testCommand": null,
+    "lintCommand": null,
+    "devCommand": null,
+    "scripts": {}
+  },
+  "conventions": {
+    "namingStyle": null,
+    "importStyle": null,
+    "testPattern": null,
+    "fileOrganization": null
+  },
+  "structure": {
+    "isMonorepo": false,
+    "workspaces": [],
+    "mainDirectories": [
+      "docs",
+      "tests"
+    ],
+    "gitBranches": null
+  },
+  "customNotes": [],
+  "directoryMap": {
+    "adapters": {
+      "path": "adapters",
+      "purpose": null,
+      "fileCount": 0,
+      "lastAccessed": 1779625403546,
+      "keyFiles": []
+    },
+    "capabilities": {
+      "path": "capabilities",
+      "purpose": null,
+      "fileCount": 1,
+      "lastAccessed": 1779625403547,
+      "keyFiles": [
+        "claude-code.json"
+      ]
+    },
+    "docs": {
+      "path": "docs",
+      "purpose": "Documentation",
+      "fileCount": 3,
+      "lastAccessed": 1779625403548,
+      "keyFiles": [
+        "cli-reference.lock",
+        "cli-reference.md",
+        "concurrency-model.md"
+      ]
+    },
+    "hooks": {
+      "path": "hooks",
+      "purpose": null,
+      "fileCount": 4,
+      "lastAccessed": 1779625403548,
+      "keyFiles": [
+        "hooks.json",
+        "pre-tool.sh",
+        "session-start.sh",
+        "stop.sh"
+      ]
+    },
+    "skills": {
+      "path": "skills",
+      "purpose": null,
+      "fileCount": 0,
+      "lastAccessed": 1779625403548,
+      "keyFiles": []
+    },
+    "tests": {
+      "path": "tests",
+      "purpose": "Test files",
+      "fileCount": 0,
+      "lastAccessed": 1779625403548,
+      "keyFiles": []
+    },
+    "tools": {
+      "path": "tools",
+      "purpose": null,
+      "fileCount": 3,
+      "lastAccessed": 1779625403548,
+      "keyFiles": [
+        "curate-memory.sh",
+        "refresh-cli-reference.sh",
+        "render-anchors.sh"
+      ]
+    }
+  },
+  "hotPaths": [
+    {
+      "path": "hooks/session-start.sh",
+      "accessCount": 8,
+      "lastAccessed": 1779625958380,
+      "type": "file"
+    },
+    {
+      "path": "hooks/stop.sh",
+      "accessCount": 6,
+      "lastAccessed": 1779625837839,
+      "type": "file"
+    },
+    {
+      "path": "tools/curate-memory.sh",
+      "accessCount": 4,
+      "lastAccessed": 1779625744998,
+      "type": "file"
+    }
+  ],
+  "userDirectives": []
+}

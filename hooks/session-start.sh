@@ -1,26 +1,12 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# session-start.sh — Multica session context injector (Claude Code SessionStart hook)
-#
-# Reads Priority Context from notepad, recent + high-confidence learnings,
-# and current loop state, then outputs them as additionalContext JSON.
-#
-# Output format (Claude Code SessionStart hook contract):
-#   {"hookSpecificOutput": {"additionalContext": "<text>"}}
-
 MULTICA_WORKDIR="${MULTICA_WORKDIR:-$(pwd)}"
 NOTEPAD="${MULTICA_WORKDIR}/.multica/notepad.md"
 LEARNINGS="${MULTICA_WORKDIR}/.multica/learnings.jsonl"
 
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
-
-# Escape a string for JSON: escape backslash, double-quote, and control chars
 json_escape() {
   local s="$1"
-  # Replace \ → \\, " → \", newline → \n, tab → \t
   s="${s//\\/\\\\}"
   s="${s//\"/\\\"}"
   s="${s//$'\n'/\\n}"
@@ -41,59 +27,97 @@ if [[ -f "$NOTEPAD" ]]; then
     capture                { print }
   ' "$NOTEPAD" | head -c 500)
 
-  priority_trimmed="${priority_raw#"${priority_raw%%[![:space:]]*}"}"  # ltrim
-  priority_trimmed="${priority_trimmed%"${priority_trimmed##*[![:space:]]}"}"  # rtrim
+  priority_trimmed="${priority_raw#"${priority_raw%%[![:space:]]*}"}"
+  priority_trimmed="${priority_trimmed%"${priority_trimmed##*[![:space:]]}"}"
 
   if [[ -n "$priority_trimmed" ]]; then
     context_parts+=("## Priority Context"$'\n'"$priority_trimmed")
   fi
 fi
 
-# ---------------------------------------------------------------------------
-# 2. Learnings: 10 most recent + all with confidence >= 7
-# ---------------------------------------------------------------------------
-
 if [[ -f "$LEARNINGS" && -s "$LEARNINGS" ]]; then
-  # Most recent 10 lines
   recent=$(tail -n 10 "$LEARNINGS")
 
-  # High-confidence entries (confidence >= 7): parse with awk
   high_conf=$(awk '
     /"confidence":[[:space:]]*([89]|10)/ { print }
     /"confidence":[[:space:]]*7/          { print }
   ' "$LEARNINGS")
 
-  # Merge, deduplicate by line, keep order (recent first)
   learnings_combined=$(printf '%s\n%s\n' "$recent" "$high_conf" \
     | awk '!seen[$0]++' \
     | head -n 20)
 
   if [[ -n "$learnings_combined" ]]; then
-    # Extract insight fields for readable output
-    insights=$(printf '%s\n' "$learnings_combined" \
-      | awk -F'"' '
-          {
-            insight=""
-            key=""
-            conf=""
-            for(i=1;i<=NF;i++){
-              if($i=="insight")  insight=$(i+2)
-              if($i=="key")      key=$(i+2)
-              if($i=="confidence"){ gsub(/[^0-9]/,"",$( i+1)); conf=$(i+1) }
+    if command -v python3 >/dev/null 2>&1; then
+      insights=""
+      while IFS= read -r entry; do
+        [[ -z "$entry" ]] && continue
+
+        result=$(python3 - "$entry" "$MULTICA_WORKDIR" <<'PYEOF'
+import json, sys
+from pathlib import Path
+from datetime import datetime
+
+entry_str = sys.argv[1]
+workdir   = sys.argv[2]
+
+try:
+    e = json.loads(entry_str)
+except Exception:
+    sys.exit(0)
+
+key     = e.get("key", "")
+insight = e.get("insight", "")
+conf    = e.get("confidence", 0)
+ts      = e.get("ts", "")
+files   = e.get("files", [])
+
+if not insight:
+    sys.exit(0)
+
+stale = False
+if files and ts:
+    try:
+        entry_time = datetime.fromisoformat(ts.replace("Z", "+00:00")).timestamp()
+        for f in files:
+            fp = Path(f) if Path(f).is_absolute() else Path(workdir) / f
+            if not fp.exists():
+                stale = True
+                break
+            if fp.stat().st_mtime > entry_time:
+                stale = True
+                break
+    except Exception:
+        pass
+
+prefix = "[possibly stale] " if stale else ""
+print(f"- {prefix}[{key}] (conf:{conf}) {insight}")
+PYEOF
+        )
+        [[ -n "$result" ]] && insights="${insights}${result}"$'\n'
+      done <<< "$learnings_combined"
+    else
+      insights=$(printf '%s\n' "$learnings_combined" \
+        | awk -F'"' '
+            {
+              insight=""
+              key=""
+              conf=""
+              for(i=1;i<=NF;i++){
+                if($i=="insight")  insight=$(i+2)
+                if($i=="key")      key=$(i+2)
+                if($i=="confidence"){ gsub(/[^0-9]/,"",$( i+1)); conf=$(i+1) }
+              }
+              if(insight!="") printf "- [%s] (conf:%s) %s\n", key, conf, insight
             }
-            if(insight!="") printf "- [%s] (conf:%s) %s\n", key, conf, insight
-          }
-        ')
+          ')
+    fi
 
     if [[ -n "$insights" ]]; then
       context_parts+=("## Prior Learnings"$'\n'"$insights")
     fi
   fi
 fi
-
-# ---------------------------------------------------------------------------
-# 3. Current loop state (if active)
-# ---------------------------------------------------------------------------
 
 issue_id=""
 if [[ -n "${MULTICA_ISSUE_ID:-}" ]]; then
@@ -107,7 +131,6 @@ if [[ -n "$issue_id" ]]; then
 
   if [[ -f "$LOOP_JSON" ]]; then
     active=$(awk -F'"' '/"active"/{print $4}' "$LOOP_JSON" | head -1)
-    # Handle bare true/false (not quoted)
     if [[ -z "$active" ]]; then
       active=$(awk '/"active"/{gsub(/[^a-z]/,"",$2); print $2}' "$LOOP_JSON" | head -1)
     fi
@@ -116,7 +139,6 @@ if [[ -n "$issue_id" ]]; then
       iteration=$(awk -F'"' '/"iteration"/{gsub(/[^0-9]/,"",$3); print $3}' "$LOOP_JSON" | head -1)
       phase=$(awk -F'"' '/"phase"/{print $4}' "$LOOP_JSON" | head -1)
 
-      # Find first incomplete story
       next_story=$(awk -F'"' '
         /"passes"/ && /false/ { found=1 }
         /"title"/ && found    { print $4; exit }
@@ -136,7 +158,6 @@ SQUAD_PROTOCOL_MARKER="## Squad Operating Protocol"
 claude_md="${MULTICA_WORKDIR}/CLAUDE.md"
 
 if [[ -f "$claude_md" ]] && grep -qF "$SQUAD_PROTOCOL_MARKER" "$claude_md"; then
-  # Extract roster summary (capped at 800 bytes)
   roster_raw=$(awk '/^## Squad Roster/,/^## [^S]/' "$claude_md" | head -c 800)
 
   audit_warning=""
@@ -190,17 +211,11 @@ export MULTICA_MODEL_FAST MULTICA_MODEL_STD MULTICA_MODEL_DEEP
 
 context_parts+=("## Model Routing"$'\n'"Model routing: fast=${MULTICA_MODEL_FAST} std=${MULTICA_MODEL_STD} deep=${MULTICA_MODEL_DEEP}")
 
-# ---------------------------------------------------------------------------
-# Assemble and output JSON
-# ---------------------------------------------------------------------------
-
 if [[ ${#context_parts[@]} -eq 0 ]]; then
-  # Nothing to inject — output empty additionalContext (valid, no-op)
   printf '{"hookSpecificOutput": {"additionalContext": ""}}\n'
   exit 0
 fi
 
-# Join parts with double newline separator
 combined=""
 for part in "${context_parts[@]}"; do
   if [[ -n "$combined" ]]; then

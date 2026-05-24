@@ -8,6 +8,7 @@ AGENTS.md is the source of truth; this file adds Claude Code-specific affordance
 |-------|---------|
 | `skills/advanced/persistence-loop.md` | PRD-driven persistence loop with session state, completion signal protocol, and deslop pass |
 | `skills/advanced/parallel-exec.md` | Two-stage review (spec compliance → code quality) with model routing |
+| `skills/advanced/subagent-dispatch.md` | Subagent dispatch with model routing and fresh context principle |
 
 ---
 

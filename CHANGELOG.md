@@ -1,5 +1,62 @@
 # Changelog
 
+## [0.4.0] - 2026-05-24
+
+### Added
+- `tools/curate-memory.sh` — learning 去重（last-wins by key）、confidence 衰减（>90d: -2, >180d: -4）、归档（conf<3），原子写
+- `hooks/stop.sh` DONE 路径：git commit `.multica/learnings.jsonl`（多机知识同步）、notepad Working Memory 7天过期清理、consolidation-prompt.txt 写入（供 haiku subagent 记忆整合）
+- `hooks/session-start.sh`：stat-based staleness 检测（源文件不存在或 mtime 更新则标 [possibly stale]），python3 可用时生效
+
+### Knowledge Management Design
+Based on deep research of Hermes Agent (Curator + skill lifecycle), Graphify (stat-based dedup), and LLM Wiki (stale_since causal propagation):
+- No TTL — staleness is causal (file changes), not time-based
+- Write-time append-only, offline curate for dedup
+- Confidence as weight, not deletion signal (archive instead of delete)
+
+---
+
+## [0.3.0] - 2026-05-24
+
+### Added
+- `skills/advanced/subagent-dispatch.md` — subagent 派发规范：模型路由表（haiku/sonnet/opus）、fresh context 原则（完整 prompt，不引用历史）、Task() 示例、output contract
+- `capabilities/claude-code.json`: 新增 `model_routing` 字段（fast/standard/deep）
+- `hooks/session-start.sh`: 注入 `MULTICA_MODEL_FAST/STD/DEEP` 环境变量（由 model_routing 驱动）
+- `hooks/session-start.sh`: 读 `.multica/state/<issue_id>/hitl-bounces.json` 注入 3-strike 计数到 context
+
+### Changed
+- `hooks/stop.sh`: leader 跳过 squad activity 时直接调用 `multica squad activity failed`（不再只写 warning 等下次提示）
+- `skills/core/squad-member-workflow.md`: bounce 计数写入 `hitl-bounces.json` 文件（程序可读，不只靠 metadata.set）
+- `skills/core/multica-workflow.md`: 新增 context budget 感知规则（>35% 正常，≤35% checkpoint，≤25% blocked）
+
+### Reliability Improvements
+Replaced LLM-discipline mechanisms with program-enforced ones:
+- 3-strike count: file-based storage → session-start injection (high reliability)
+- squad activity: event-after warning → direct CLI call (high reliability)
+- Model routing: skill text description → env var injection (high reliability)
+
+---
+
+## [0.2.0] - 2026-05-23
+
+### Added
+- `skills/core/squad-leader-workflow.md` — Squad leader 工作流：coordinate-don't-execute、两种委派策略决策矩阵（子 issue 并行 vs @mention 串行）、mandatory squad activity、HITL reply no-mention 规则、3-strike 升级
+- `skills/core/squad-member-workflow.md` — Squad member 工作流：两级 HITL（[HITL:leader] 优先，[HITL:human] 作为 fallback）、独立 3-strike 计数、完成不 @mention 防 double-fire
+- `hooks/session-start.sh`: Section 4 Squad leader 检测（grep `{workDir}/CLAUDE.md`）+ roster 注入
+- `hooks/stop.sh`: squad activity passive audit（非阻塞，exit 0）
+- `docs/cli-reference.md`: 新增 3 个 anchor（squad.activity、issue.create.child、issue.comment.list.thread）
+- `tools/render-anchors.sh`: 未知 anchor 时 exit 2 防漂移
+- `capabilities/claude-code.json`: squad-leader/squad-member capability flags
+- Smoke scenarios 5/6/7（总计 44 → 44 通过）
+
+### Design Decisions (sourced from multica daemon code)
+- Leader detection: `strings.Contains(instructions, "## Squad Operating Protocol")` in `daemon.go`
+- Daemon writes briefing to `{workDir}/CLAUDE.md` every task claim (`runtime_config.go:101-106`)
+- `multica squad activity` mandatory every turn (`cmd_squad.go:379-434`)
+- no_action outcome: silent exit, no comment
+- Drift guard: `SQUAD_PROTOCOL_MARKER` literal in exactly 2 files (hooks only)
+
+---
+
 ## [0.1.0] - 2026-05-23
 
 ### Added

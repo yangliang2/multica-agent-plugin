@@ -28,9 +28,9 @@ checkpoint comments.
 ## Post-MVP Harness Extension Paths
 
 Other harnesses are on the roadmap. See `.omc/plans/multica-agent-plugin.md`
-rev2 for the planned adapter architecture. Priority order:
+for the planned adapter architecture. Priority order:
 
-1. **Codex** — CLI-native, similar hook surface; adapter planned for v0.2.0
+1. **Codex** — CLI-native, similar hook surface
 2. **Cursor** — IDE-embedded; requires different context injection mechanism
 3. **Gemini Code Assist** — Google Cloud context; auth and workspace model differ
 4. **Kimi** — International deployment; i18n and locale handling needed
@@ -44,3 +44,17 @@ document the expected fallback behavior per harness.
 release time. If you modify `docs/cli-reference.md` manually, re-run
 `tools/refresh-cli-reference.sh` to regenerate the lock file. The smoke script
 (`tests/smoke/run-claude.sh`) will fail Scenario 4 if the lock is stale.
+
+## Multi-Machine Knowledge Sync Requires Git
+
+The v0.4.0 feature that git-commits `.multica/learnings.jsonl` on the DONE path
+(`hooks/stop.sh`) requires the project working directory to be a git repository.
+In non-git directories, the commit step is silently skipped and learnings remain
+local only.
+
+## curate-memory.sh and Staleness Detection Require python3
+
+`tools/curate-memory.sh` (learning dedup and confidence decay) and the
+stat-based staleness detection in `hooks/session-start.sh` both require
+`python3` to be available on `PATH`. On systems without python3, curate-memory
+will not run and staleness detection will be skipped silently.

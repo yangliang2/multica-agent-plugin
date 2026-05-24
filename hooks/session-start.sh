@@ -132,7 +132,6 @@ if [[ -n "$issue_id" ]]; then
   fi
 fi
 
-# ── Section 4: Squad leader detection ──────────────────────────────────────
 SQUAD_PROTOCOL_MARKER="## Squad Operating Protocol"
 claude_md="${MULTICA_WORKDIR}/CLAUDE.md"
 
@@ -140,7 +139,6 @@ if [[ -f "$claude_md" ]] && grep -qF "$SQUAD_PROTOCOL_MARKER" "$claude_md"; then
   # Extract roster summary (capped at 800 bytes)
   roster_raw=$(awk '/^## Squad Roster/,/^## [^S]/' "$claude_md" | head -c 800)
 
-  # Check for pending audit warning from previous turn
   audit_warning=""
   warn_file="${MULTICA_WORKDIR}/.multica/state/squad-audit-warning"
   if [[ -f "$warn_file" ]]; then
@@ -156,8 +154,41 @@ if [[ -f "$claude_md" ]] && grep -qF "$SQUAD_PROTOCOL_MARKER" "$claude_md"; then
     squad_part="${squad_part}"$'\n'"Roster (excerpt):"$'\n'"${roster_raw}"
   fi
 
+  bounce_context=""
+  if [[ -n "${MULTICA_ISSUE_ID:-}" ]]; then
+    bounces_file="${MULTICA_WORKDIR}/.multica/state/${MULTICA_ISSUE_ID}/hitl-bounces.json"
+    if [[ -f "$bounces_file" ]]; then
+      while IFS= read -r line; do
+        bounce_context+="$line"$'\n'
+      done < <(awk '
+        /"[^"]+": \{/ { key=$0; gsub(/[": {]/, "", key); gsub(/^[[:space:]]+/, "", key) }
+        /"count":/ { gsub(/[^0-9]/, "", $2); print "HITL bounce count for " key ": " $2 "/3" }
+      ' "$bounces_file")
+    fi
+  fi
+  if [[ -n "$bounce_context" ]]; then
+    squad_part="${squad_part}"$'\n'"${bounce_context}"
+  fi
+
   context_parts+=("## Squad Context"$'\n'"$squad_part")
 fi
+
+_caps_file="${MULTICA_PLUGIN_ROOT:-$(dirname "${BASH_SOURCE[0]}")/..}/capabilities/claude-code.json"
+MULTICA_MODEL_FAST="haiku"
+MULTICA_MODEL_STD="sonnet"
+MULTICA_MODEL_DEEP="opus"
+
+if [[ -f "$_caps_file" ]] && command -v jq >/dev/null 2>&1; then
+  _fast=$(jq -r '.model_routing.fast // empty' "$_caps_file" 2>/dev/null)
+  _std=$(jq -r '.model_routing.standard // empty' "$_caps_file" 2>/dev/null)
+  _deep=$(jq -r '.model_routing.deep // empty' "$_caps_file" 2>/dev/null)
+  [[ -n "$_fast" ]] && MULTICA_MODEL_FAST="$_fast"
+  [[ -n "$_std" ]] && MULTICA_MODEL_STD="$_std"
+  [[ -n "$_deep" ]] && MULTICA_MODEL_DEEP="$_deep"
+fi
+export MULTICA_MODEL_FAST MULTICA_MODEL_STD MULTICA_MODEL_DEEP
+
+context_parts+=("## Model Routing"$'\n'"Model routing: fast=${MULTICA_MODEL_FAST} std=${MULTICA_MODEL_STD} deep=${MULTICA_MODEL_DEEP}")
 
 # ---------------------------------------------------------------------------
 # Assemble and output JSON

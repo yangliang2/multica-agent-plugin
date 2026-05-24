@@ -136,6 +136,18 @@ This skill governs the full lifecycle of a Multica agent task from assignment to
 
 ---
 
+## Context Budget Awareness
+
+| Remaining | Action |
+|-----------|--------|
+| >35% | Continue work |
+| ≤35% | Write checkpoint comment before new complex work |
+| ≤25% | Checkpoint + set status `blocked` with reason "context-budget-critical" |
+
+Checkpoint format: `[checkpoint] Completed: <done>. Remaining: <left>. Context: <N>% remaining.`
+
+---
+
 ## Daemon-Safe Notes
 
 - Never use `sleep`, `read`, polling loops, or any blocking wait for human input.

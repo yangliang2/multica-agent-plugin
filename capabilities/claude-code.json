@@ -1,6 +1,11 @@
 {
   "harness": "claude-code",
   "archetype": "file-loaded",
+  "model_routing": {
+    "fast": "haiku",
+    "standard": "sonnet",
+    "deep": "opus"
+  },
   "capabilities": {
     "hooks": "native",
     "destructive-guard": "native",

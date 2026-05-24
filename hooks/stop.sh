@@ -123,8 +123,6 @@ if [[ "$done_signal" == "false" && -n "${MULTICA_OUTPUT_FILE:-}" && -f "${MULTIC
   fi
 fi
 
-# ── Squad leader activity audit ───────────────────────────────────────────
-# Check if squad-activity.marker was written this turn; set warning if not.
 squad_leader_audit() {
   local _squad_marker="## Squad Operating Protocol"
   local _claude_md="${MULTICA_WORKDIR}/CLAUDE.md"
@@ -133,10 +131,13 @@ squad_leader_audit() {
       local _marker_file="${MULTICA_WORKDIR}/.multica/state/${MULTICA_ISSUE_ID}/squad-activity.marker"
       local _warn_file="${MULTICA_WORKDIR}/.multica/state/squad-audit-warning"
       if [[ ! -f "$_marker_file" ]]; then
+        if command -v multica >/dev/null 2>&1; then
+          multica squad activity "$MULTICA_ISSUE_ID" failed \
+            --reason "activity-not-recorded-by-agent" 2>/dev/null || true
+        fi
         mkdir -p "${MULTICA_WORKDIR}/.multica/state"
         echo "Squad activity not recorded for issue ${MULTICA_ISSUE_ID} at $(date -u +%Y-%m-%dT%H:%M:%SZ)" > "$_warn_file"
       fi
-      # Clean up marker for next turn
       rm -f "$_marker_file"
     fi
   fi

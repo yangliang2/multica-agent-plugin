@@ -96,8 +96,13 @@ Use when blocked by ambiguity, missing context, or a conflict the member cannot 
 
 `<<cli:issue.comment.add>>`
 
-4. Set status `blocked`: `<<cli:issue.status>>`
-5. EXIT PROCESS IMMEDIATELY.
+4. Write bounce count to `.multica/state/<issue_id>/hitl-bounces.json`:
+   Format: `{"<question_id>": {"count": N, "last_at": "<ISO8601>", "tier": "leader"}}`
+   If file exists: increment count for this question_id
+   If file absent: create with count: 1
+   This is the primary bounce tracking mechanism (more reliable than metadata.set alone)
+5. Set status `blocked`: `<<cli:issue.status>>`
+6. EXIT PROCESS IMMEDIATELY.
 
 ### Tier 2 — Escalate to Human
 
@@ -136,19 +141,17 @@ Leader was consulted but could not resolve: <brief summary, or "no leader in ros
 
 ## 3-Strike Rule (per question_id)
 
-The member maintains an independent bounce counter per `question_id` in issue metadata, separate from any leader counter.
+Member maintains independent bounce counter per `question_id` in issue metadata.
 
 **Tracking**:
 - Key: `hitl_bounces_<question_id>`
-- Value: integer count of unresolved raises
 - Storage: `<<cli:issue.metadata.set>>`
 
-**On each new blocked/resume cycle for the same `question_id`**:
-1. Read current count: `<<cli:issue.metadata.set>>` (read `hitl_bounces_<question_id>`)
-2. Increment and write back.
-3. If count reaches 3: skip `[HITL:leader]` — post `[HITL:human]` directly.
+**On each blocked/resume cycle**:
+1. Read and increment count
+2. If count reaches 3: post `[HITL:human]` directly (skip leader)
 
-**question_id stability**: generate the `question_id` once on first raise (`<issue_id>-<hash-of-question-summary>`). Reuse the exact same ID on every subsequent bounce. Never regenerate.
+**question_id stability**: Generate once on first raise (`<issue_id>-<hash-of-question-summary>`). Reuse same ID on every subsequent bounce.
 
 ---
 

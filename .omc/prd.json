@@ -1,14 +1,98 @@
 {
-  "version": "0.2.0",
-  "task": "multica-agent-plugin v0.2.0 Squad-aware mode",
+  "version": "0.3.0",
+  "task": "multica-agent-plugin v0.3.0 reliability + subagent dispatch",
   "stories": [
-    { "id": "US-0", "title": "Step 0: CLI anchor extensions + render-anchors hardening", "priority": 1, "passes": true },
-    { "id": "US-1", "title": "Step 1: AGENTS.md Squad Awareness section", "priority": 2, "passes": true },
-    { "id": "US-2", "title": "Step 2: capabilities/claude-code.json squad capability flags", "priority": 3, "passes": true },
-    { "id": "US-3", "title": "Step 3: skills/core/squad-leader-workflow.md", "priority": 4, "passes": true },
-    { "id": "US-4", "title": "Step 4: skills/core/squad-member-workflow.md", "priority": 5, "passes": true },
-    { "id": "US-5", "title": "Step 5: hooks/session-start.sh squad leader detection", "priority": 6, "passes": true },
-    { "id": "US-6", "title": "Step 6: hooks/stop.sh squad activity audit", "priority": 7, "passes": true },
-    { "id": "US-7", "title": "Step 7: Smoke scenarios 5, 6, 7", "priority": 8, "passes": true }
+    {
+      "id": "US-P0-1",
+      "title": "stop.sh: direct squad activity call on leader skip",
+      "priority": 1,
+      "passes": false,
+      "acceptanceCriteria": [
+        "hooks/stop.sh directly calls 'multica squad activity <issue_id> failed --reason activity-not-recorded-by-agent' when leader marker detected AND squad-activity.marker absent",
+        "The direct call is made BEFORE writing squad-audit-warning (not instead of it)",
+        "multica CLI absence is handled gracefully (fall back to warning-only if multica not found)",
+        "bash -n hooks/stop.sh passes",
+        "shellcheck hooks/stop.sh reports no error-level findings",
+        "Smoke: stop.sh with leader marker + no activity marker → squad-audit-warning written AND multica call attempted"
+      ]
+    },
+    {
+      "id": "US-P0-2",
+      "title": "session-start.sh: inject 3-strike counts + model env vars",
+      "priority": 2,
+      "passes": false,
+      "acceptanceCriteria": [
+        "hooks/session-start.sh reads .multica/state/<issue_id>/hitl-bounces.json and injects bounce counts into additionalContext when present",
+        "Format injected: 'HITL bounce count for <question_id>: N/3 (tier: leader|human)'",
+        "hooks/session-start.sh reads capabilities/claude-code.json model_routing field and exports MULTICA_MODEL_FAST, MULTICA_MODEL_STD, MULTICA_MODEL_DEEP env vars",
+        "When capabilities file or model_routing field absent: env vars default to haiku/sonnet/opus",
+        "bash -n hooks/session-start.sh passes",
+        "shellcheck hooks/session-start.sh reports no error-level findings",
+        "Smoke: fixture hitl-bounces.json with question_id=q1 count=2 → additionalContext contains 'bounce count for q1: 2/3'"
+      ]
+    },
+    {
+      "id": "US-P0-3",
+      "title": "squad-member-workflow.md: bounce count written to file",
+      "priority": 3,
+      "passes": false,
+      "acceptanceCriteria": [
+        "skills/core/squad-member-workflow.md instructs member to write bounce count to .multica/state/<issue_id>/hitl-bounces.json on every [HITL:leader] escalation",
+        "File format documented: {\"<question_id>\": {\"count\": N, \"last_at\": \"<ISO8601>\", \"tier\": \"leader\"}}",
+        "question_id stability rule retained: generate once, reuse across bounces",
+        "Instruction uses <<cli:issue.metadata.set>> as fallback only, file write is primary",
+        "grep -E 'multica (issue|squad) [a-zA-Z]' skills/core/squad-member-workflow.md returns 0 (all CLI via anchors)"
+      ]
+    },
+    {
+      "id": "US-P1-1",
+      "title": "capabilities/claude-code.json: model_routing field",
+      "priority": 4,
+      "passes": false,
+      "acceptanceCriteria": [
+        "capabilities/claude-code.json contains model_routing object with fast, standard, deep keys",
+        "Default values: fast=haiku, standard=sonnet, deep=opus",
+        "jq -e .model_routing capabilities/claude-code.json passes",
+        "jq -e . capabilities/claude-code.json passes (valid JSON)"
+      ]
+    },
+    {
+      "id": "US-P1-2",
+      "title": "skills/advanced/subagent-dispatch.md: new skill",
+      "priority": 5,
+      "passes": false,
+      "acceptanceCriteria": [
+        "skills/advanced/subagent-dispatch.md exists and is <=200 lines",
+        "File contains model routing table: haiku (mechanical/single-file), sonnet (standard/multi-file), opus (architecture/review)",
+        "File contains fresh context principle: subagent prompt must include complete task context, never 'see issue for details'",
+        "File contains Task() call examples with subagent_type and model parameters",
+        "File references $MULTICA_MODEL_FAST, $MULTICA_MODEL_STD, $MULTICA_MODEL_DEEP env vars",
+        "File contains output format rule: subagent writes result to file or multica comment, not relied on return value",
+        "File contains Daemon-Safe Notes section"
+      ]
+    },
+    {
+      "id": "US-P2",
+      "title": "multica-workflow.md: context budget awareness",
+      "priority": 6,
+      "passes": false,
+      "acceptanceCriteria": [
+        "skills/core/multica-workflow.md contains context budget rules in a dedicated section",
+        "Rules specify: >35% remaining = normal, <=35% = checkpoint before new work, <=25% = summarize and set blocked",
+        "Rules specify how to checkpoint: write progress comment via <<cli:issue.comment.add>> then continue or set blocked",
+        "Daemon-Safe Notes section updated to mention context budget awareness"
+      ]
+    },
+    {
+      "id": "US-SMOKE",
+      "title": "Smoke: all 44+ tests pass after v0.3.0 changes",
+      "priority": 7,
+      "passes": false,
+      "acceptanceCriteria": [
+        "bash tests/smoke/run-claude.sh exits 0 with FAIL: 0",
+        "All pre-existing scenarios (1-7) still pass",
+        "No regression in v0.1.0 or v0.2.0 behavior"
+      ]
+    }
   ]
 }

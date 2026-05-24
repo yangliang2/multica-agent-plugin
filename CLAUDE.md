@@ -28,6 +28,10 @@ Hooks are registered by merging `hooks/hooks.json` into your project's `.claude/
 
 Set `MULTICA_PLUGIN_ROOT` to the absolute path of this plugin directory before starting Claude Code.
 
+> **Note:** Hook paths in `settings.json` are resolved to **absolute paths at
+> install time** by `install.sh`. If you relocate the plugin directory, run
+> `bash install.sh` again to update the registered paths.
+
 ---
 
 ## Capability Authority

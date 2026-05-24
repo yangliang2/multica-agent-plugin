@@ -46,7 +46,7 @@ Loop state lives at `.multica/state/<issue_id>/loop.json`.
 Field constraints:
 - `active` — `true` while the loop is running; set to `false` only on completion or hard block
 - `iteration` — incremented at the start of each loop iteration; never decremented
-- `max_iterations` — hard cap, default 50; when reached the loop halts with HITL comment
+- `max_iterations` — hard cap, default `$MULTICA_LOOP_MAX_ITERATIONS`; when reached the loop halts with HITL comment
 - `phase` — one of: `"setup"`, `"execution"`, `"deslop"`, `"review"`, `"complete"`
 - `stories[].passes` — set to `true` only after ALL acceptance criteria are verified with fresh evidence
 - All writes to `loop.json` MUST use mktemp + atomic rename (see `docs/concurrency-model.md`)
@@ -150,7 +150,7 @@ The reviewer checks ALL acceptance criteria across ALL stories against the curre
 
 ## Iteration Hard Cap
 
-`max_iterations` defaults to 50. When `iteration >= max_iterations`:
+`max_iterations` defaults to `$MULTICA_LOOP_MAX_ITERATIONS`. When `iteration >= max_iterations`:
 
 1. Write a `[loop-blocked: max iterations reached]` comment with current story states.
 2. Set issue status to `blocked` via `multica issue status set blocked`.

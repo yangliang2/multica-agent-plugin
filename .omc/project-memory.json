@@ -99,15 +99,21 @@
   },
   "hotPaths": [
     {
+      "path": "hooks/session-start.sh",
+      "accessCount": 26,
+      "lastAccessed": 1779634260596,
+      "type": "file"
+    },
+    {
       "path": "hooks/stop.sh",
       "accessCount": 24,
       "lastAccessed": 1779631358678,
       "type": "file"
     },
     {
-      "path": "hooks/session-start.sh",
-      "accessCount": 19,
-      "lastAccessed": 1779631232317,
+      "path": "skills/core/multica-workflow.md",
+      "accessCount": 15,
+      "lastAccessed": 1779634297467,
       "type": "file"
     },
     {
@@ -123,9 +129,27 @@
       "type": "file"
     },
     {
+      "path": "KNOWN-LIMITATIONS.md",
+      "accessCount": 9,
+      "lastAccessed": 1779634146033,
+      "type": "file"
+    },
+    {
+      "path": "skills/core/hitl-protocol.md",
+      "accessCount": 9,
+      "lastAccessed": 1779634276000,
+      "type": "file"
+    },
+    {
       "path": "tools/curate-memory.sh",
       "accessCount": 7,
       "lastAccessed": 1779627758564,
+      "type": "file"
+    },
+    {
+      "path": "CHANGELOG.md",
+      "accessCount": 7,
+      "lastAccessed": 1779633683761,
       "type": "file"
     },
     {
@@ -135,15 +159,15 @@
       "type": "file"
     },
     {
-      "path": "KNOWN-LIMITATIONS.md",
+      "path": "CLAUDE.md",
       "accessCount": 6,
-      "lastAccessed": 1779627729890,
+      "lastAccessed": 1779633659236,
       "type": "file"
     },
     {
-      "path": "CHANGELOG.md",
-      "accessCount": 5,
-      "lastAccessed": 1779627689356,
+      "path": "capabilities/claude-code.json",
+      "accessCount": 6,
+      "lastAccessed": 1779634143969,
       "type": "file"
     },
     {
@@ -159,9 +183,15 @@
       "type": "file"
     },
     {
-      "path": "CLAUDE.md",
+      "path": "skills/advanced/persistence-loop.md",
       "accessCount": 5,
-      "lastAccessed": 1779627759681,
+      "lastAccessed": 1779633616871,
+      "type": "file"
+    },
+    {
+      "path": "VERSION",
+      "accessCount": 5,
+      "lastAccessed": 1779633673569,
       "type": "file"
     },
     {
@@ -171,33 +201,9 @@
       "type": "file"
     },
     {
-      "path": "VERSION",
-      "accessCount": 3,
-      "lastAccessed": 1779626649165,
-      "type": "file"
-    },
-    {
-      "path": "skills/core/multica-workflow.md",
-      "accessCount": 3,
-      "lastAccessed": 1779627718800,
-      "type": "file"
-    },
-    {
-      "path": "skills/core/hitl-protocol.md",
-      "accessCount": 3,
-      "lastAccessed": 1779627719780,
-      "type": "file"
-    },
-    {
       "path": "hooks/hooks.json",
       "accessCount": 3,
       "lastAccessed": 1779627727792,
-      "type": "file"
-    },
-    {
-      "path": "capabilities/claude-code.json",
-      "accessCount": 3,
-      "lastAccessed": 1779627758034,
       "type": "file"
     },
     {
@@ -222,12 +228,6 @@
       "path": "skills/core/squad-member-workflow.md",
       "accessCount": 2,
       "lastAccessed": 1779627722429,
-      "type": "file"
-    },
-    {
-      "path": "skills/advanced/persistence-loop.md",
-      "accessCount": 2,
-      "lastAccessed": 1779627722962,
       "type": "file"
     },
     {

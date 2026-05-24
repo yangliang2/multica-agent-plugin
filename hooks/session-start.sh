@@ -216,6 +216,74 @@ export MULTICA_MODEL_FAST MULTICA_MODEL_STD MULTICA_MODEL_DEEP
 
 context_parts+=("## Model Routing"$'\n'"Model routing: fast=${MULTICA_MODEL_FAST} std=${MULTICA_MODEL_STD} deep=${MULTICA_MODEL_DEEP}")
 
+# Section 6: Thresholds from capabilities
+_caps="${MULTICA_PLUGIN_ROOT:-$(dirname "${BASH_SOURCE[0]}")/..}/capabilities/claude-code.json"
+MULTICA_HITL_TIMEOUT_HOURS=24
+MULTICA_HITL_STRIKE_LIMIT=3
+MULTICA_CONTEXT_CHECKPOINT_PCT=35
+MULTICA_CONTEXT_BLOCKED_PCT=25
+MULTICA_LOOP_MAX_ITERATIONS=50
+if [[ -f "$_caps" ]] && command -v jq >/dev/null 2>&1; then
+  _v=$(jq -r '.thresholds.hitl_timeout_hours // empty' "$_caps" 2>/dev/null)
+  [[ -n "$_v" ]] && MULTICA_HITL_TIMEOUT_HOURS="$_v"
+  _v=$(jq -r '.thresholds.hitl_strike_limit // empty' "$_caps" 2>/dev/null)
+  [[ -n "$_v" ]] && MULTICA_HITL_STRIKE_LIMIT="$_v"
+  _v=$(jq -r '.thresholds.context_checkpoint_pct // empty' "$_caps" 2>/dev/null)
+  [[ -n "$_v" ]] && MULTICA_CONTEXT_CHECKPOINT_PCT="$_v"
+  _v=$(jq -r '.thresholds.context_blocked_pct // empty' "$_caps" 2>/dev/null)
+  [[ -n "$_v" ]] && MULTICA_CONTEXT_BLOCKED_PCT="$_v"
+  _v=$(jq -r '.thresholds.loop_max_iterations // empty' "$_caps" 2>/dev/null)
+  [[ -n "$_v" ]] && MULTICA_LOOP_MAX_ITERATIONS="$_v"
+fi
+export MULTICA_HITL_TIMEOUT_HOURS MULTICA_HITL_STRIKE_LIMIT \
+       MULTICA_CONTEXT_CHECKPOINT_PCT MULTICA_CONTEXT_BLOCKED_PCT \
+       MULTICA_LOOP_MAX_ITERATIONS
+context_parts+=("## Thresholds"$'\n'"HITL timeout: ${MULTICA_HITL_TIMEOUT_HOURS}h | Strike limit: ${MULTICA_HITL_STRIKE_LIMIT} | Context checkpoint: ${MULTICA_CONTEXT_CHECKPOINT_PCT}% | Context blocked: ${MULTICA_CONTEXT_BLOCKED_PCT}% | Max iterations: ${MULTICA_LOOP_MAX_ITERATIONS}")
+
+# Section 7: Consolidation prompt (one-shot)
+_consolidation="${MULTICA_WORKDIR}/.multica/state/consolidation-prompt.txt"
+if [[ -f "$_consolidation" ]]; then
+  _cprompt=$(cat "$_consolidation")
+  rm -f "$_consolidation"
+  if [[ -n "$_cprompt" ]]; then
+    context_parts=("## Memory Consolidation Task"$'\n'"$_cprompt" "${context_parts[@]}")
+  fi
+fi
+
+# Section 8: HITL timeout detection
+if [[ -n "${MULTICA_ISSUE_ID:-}" ]]; then
+  _bounces="${MULTICA_WORKDIR}/.multica/state/${MULTICA_ISSUE_ID}/hitl-bounces.json"
+  if [[ -f "$_bounces" ]]; then
+    _last_hitl=$(python3 -c "
+import json, sys
+from datetime import datetime, timezone
+data = json.load(open(sys.argv[1]))
+latest = None
+latest_qid = None
+for qid, v in data.items():
+    ts = v.get('last_at', '')
+    if ts and (latest is None or ts > latest):
+        latest = ts
+        latest_qid = qid
+if latest:
+    dt = datetime.fromisoformat(latest.replace('Z', '+00:00'))
+    hours_waited = (datetime.now(timezone.utc) - dt).total_seconds() / 3600
+    print(f'{latest_qid}|{hours_waited:.1f}')
+" "$_bounces" 2>/dev/null || echo "")
+    if [[ -n "$_last_hitl" ]]; then
+      _qid="${_last_hitl%%|*}"
+      _hours="${_last_hitl##*|}"
+      _threshold="${MULTICA_HITL_TIMEOUT_HOURS}"
+      _timed_out=$(python3 -c "print('yes' if float('${_hours}') > float('${_threshold}') else 'no')" 2>/dev/null || echo "no")
+      if [[ "$_timed_out" == "yes" ]]; then
+        context_parts=("## HITL Timeout Alert"$'\n'"[HITL:timeout] question_id=${_qid} — waited ${_hours}h (threshold: ${_threshold}h).
+Proceed with the most conservative available option without waiting for human reply.
+Post a comment explaining: 'Waited ${_hours}h without reply, proceeding with most conservative option: <describe your choice>'." "${context_parts[@]}")
+      fi
+    fi
+  fi
+fi
+
 if [[ -f "$HOOK_LOG" && -s "$HOOK_LOG" ]]; then
   recent_errors=$(tail -3 "$HOOK_LOG")
   context_parts+=("## Hook Errors (recent)"$'\n'"$recent_errors")

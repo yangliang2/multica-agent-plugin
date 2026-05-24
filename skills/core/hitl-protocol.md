@@ -36,7 +36,7 @@ Do NOT trigger HITL for:
 When triggering HITL, post exactly one comment using this template:
 
 ```
-[HITL] question_id=<uuid>
+[HITL] phase=<current_phase> question_id=<uuid>
 
 **Question:** <one clear, specific question — single sentence preferred>
 
@@ -134,3 +134,23 @@ If a single task requires multiple HITL events across separate blocked cycles:
 - If the agent is restarted and finds status is already `blocked` with an open HITL comment,
   it should wait for the human reply rather than posting a duplicate question.
 - The daemon reaper is the sole arbiter of how long a blocked issue may remain open.
+
+---
+
+## HITL Timeout Auto-Degradation
+
+When `$MULTICA_HITL_TIMEOUT_HOURS` hours pass without a human reply to a
+`[HITL]` comment, the session-start hook injects a `[HITL:timeout]` context
+signal. On receiving this signal, the agent MUST:
+
+1. Choose the most conservative available option from the original HITL question
+2. Post a comment: `[HITL:timeout] question_id=<uuid> — waited Nh without reply.
+   Proceeding with conservative option: <brief description of chosen option>`
+3. Continue execution with that choice
+4. Do NOT set `blocked` — the timeout resolution allows forward progress
+
+If no clearly conservative option exists, post the comment and set `blocked`
+with reason `hitl-timeout-no-safe-default`.
+
+Default timeout: `$MULTICA_HITL_TIMEOUT_HOURS` hours (configurable via
+`capabilities/claude-code.json` thresholds.hitl_timeout_hours).

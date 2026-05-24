@@ -6,6 +6,13 @@
     "standard": "sonnet",
     "deep": "opus"
   },
+  "thresholds": {
+    "hitl_timeout_hours": 24,
+    "hitl_strike_limit": 3,
+    "context_checkpoint_pct": 35,
+    "context_blocked_pct": 25,
+    "loop_max_iterations": 50
+  },
   "capabilities": {
     "hooks": "native",
     "destructive-guard": "native",

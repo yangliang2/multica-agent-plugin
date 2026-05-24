@@ -45,6 +45,25 @@ release time. If you modify `docs/cli-reference.md` manually, re-run
 `tools/refresh-cli-reference.sh` to regenerate the lock file. The smoke script
 (`tests/smoke/run-claude.sh`) will fail Scenario 4 if the lock is stale.
 
+### ⚠️ Learnings Sync Requires Git Repository
+
+The `stop.sh` hook git-commits `.multica/learnings.jsonl` on task completion
+to enable cross-machine knowledge propagation. **This requires the project
+workspace to be a git repository.**
+
+Projects without a git repository will NOT sync learnings across machines.
+Each machine will maintain a local-only `.multica/learnings.jsonl` that is
+never shared. This is a known limitation; a server-side knowledge API
+(`multica knowledge set/get`) is planned for a future release.
+
+**Workaround:** Manually sync on the source machine:
+```bash
+git add .multica/learnings.jsonl
+git commit -m "chore(knowledge): manual learnings sync"
+git push
+```
+Then `git pull` on the target machine.
+
 ## Multi-Machine Knowledge Sync Requires Git
 
 The v0.4.0 feature that git-commits `.multica/learnings.jsonl` on the DONE path

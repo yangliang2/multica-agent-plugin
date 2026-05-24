@@ -1,5 +1,33 @@
 # Changelog
 
+## [0.5.0] - 2026-05-24
+
+### Added
+- **Configurable thresholds** (`capabilities/claude-code.json` `thresholds` field) — HITL timeout,
+  strike limit, context budget percentages, and loop max iterations are now configurable;
+  session-start injects them as `MULTICA_HITL_TIMEOUT_HOURS`, `MULTICA_HITL_STRIKE_LIMIT`,
+  `MULTICA_CONTEXT_CHECKPOINT_PCT`, `MULTICA_CONTEXT_BLOCKED_PCT`, `MULTICA_LOOP_MAX_ITERATIONS`
+- **HITL 24h timeout auto-degradation** — after `$MULTICA_HITL_TIMEOUT_HOURS` hours without
+  reviewer reply, session-start injects `[HITL:timeout]` signal; agent proceeds with most
+  conservative option and posts explanatory comment (multica has no built-in reaper)
+- **`[phase]` comment prefix** — phase transition comments now include `[phase] X→Y` prefix
+  so reviewers can quickly scan issue timeline to understand agent progress
+- **Memory consolidation one-shot trigger** — `consolidation-prompt.txt` written by `stop.sh`
+  is now consumed by `session-start.sh` as the first task of the next session (no external
+  scheduler required); file is deleted after injection (single-use)
+
+### Changed
+- `skills/core/multica-workflow.md`: context budget thresholds reference env vars instead of
+  hardcoded percentages
+- `skills/advanced/persistence-loop.md`: max_iterations references `$MULTICA_LOOP_MAX_ITERATIONS`
+- `CLAUDE.md`: added note that hook paths are resolved at install time
+
+### Documentation
+- `KNOWN-LIMITATIONS.md`: prominent ⚠️ warning that learnings sync requires a git repository;
+  added manual workaround steps
+
+---
+
 ## [0.4.0] - 2026-05-24
 
 ### Added

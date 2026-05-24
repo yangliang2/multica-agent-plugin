@@ -1,78 +1,53 @@
 {
-  "version": "0.4.0",
-  "task": "multica-agent-plugin v0.4.0 knowledge management upgrade",
+  "version": "0.5.0",
+  "task": "multica-agent-plugin v0.5.0 product decisions implementation",
   "stories": [
     {
-      "id": "US-P0-1",
-      "title": "tools/curate-memory.sh: dedup + decay + archive",
+      "id": "T1-T3",
+      "title": "capabilities thresholds + session-start extensions + hitl-protocol updates",
       "priority": 1,
       "passes": false,
       "acceptanceCriteria": [
-        "tools/curate-memory.sh exists and is executable",
-        "Script deduplicates learnings.jsonl by key: only the latest entry per key is kept",
-        "Script applies confidence decay: entries older than 90 days get confidence -= 2, older than 180 days get confidence -= 4",
-        "Script archives entries with confidence < 3 to .multica/learnings-archive.jsonl",
-        "All writes are atomic (mktemp + mv)",
-        "bash -n tools/curate-memory.sh passes",
-        "shellcheck tools/curate-memory.sh reports no error-level findings",
-        "Script is idempotent: running twice produces the same result"
-      ]
-    },
-    {
-      "id": "US-P0-2",
-      "title": "stop.sh: git commit learnings + notepad prune on completion",
-      "priority": 2,
-      "passes": false,
-      "acceptanceCriteria": [
-        "hooks/stop.sh on DONE path: git commits .multica/learnings.jsonl when it exists and has uncommitted changes",
-        "hooks/stop.sh on DONE path: prunes Working Memory entries older than 7 days from .multica/notepad.md",
-        "git commit uses message 'chore(knowledge): update learnings [skip ci]'",
-        "All git operations are guarded (fail silently if not a git repo or git unavailable)",
-        "Notepad prune preserves Priority Context and Manual Notes sections unchanged",
-        "bash -n hooks/stop.sh passes",
-        "shellcheck hooks/stop.sh reports no error-level findings",
-        "stop.sh still exits 0 on DONE path and exit 2 on loop-active path"
-      ]
-    },
-    {
-      "id": "US-P0-3",
-      "title": "session-start.sh: stat-based staleness detection for learnings",
-      "priority": 3,
-      "passes": false,
-      "acceptanceCriteria": [
-        "hooks/session-start.sh checks source files listed in each learning's 'files' field",
-        "When a source file does not exist: marks learning as '[possibly stale]' in injected context",
-        "When a source file mtime is newer than learning 'ts': marks learning as '[possibly stale]'",
-        "Stale detection only runs on entries that have non-empty 'files' field",
-        "Non-stale entries are injected normally without any staleness marker",
+        "capabilities/claude-code.json contains thresholds object with hitl_timeout_hours=24, hitl_strike_limit=3, context_checkpoint_pct=35, context_blocked_pct=25, loop_max_iterations=50",
+        "hooks/session-start.sh reads thresholds and exports MULTICA_HITL_TIMEOUT_HOURS, MULTICA_HITL_STRIKE_LIMIT, MULTICA_CONTEXT_CHECKPOINT_PCT, MULTICA_CONTEXT_BLOCKED_PCT, MULTICA_LOOP_MAX_ITERATIONS",
+        "hooks/session-start.sh detects .multica/state/consolidation-prompt.txt, injects as first context_part with '## Memory Consolidation Task' header, then deletes the file",
+        "hooks/session-start.sh detects HITL timeout via hitl-bounces.json last_at field, injects [HITL:timeout] context when > MULTICA_HITL_TIMEOUT_HOURS hours",
+        "skills/core/hitl-protocol.md contains HITL timeout auto-degradation rule referencing $MULTICA_HITL_TIMEOUT_HOURS",
+        "skills/core/hitl-protocol.md HITL comment format includes phase= field: '[HITL] phase=<current_phase> question_id=<uuid>'",
         "bash -n hooks/session-start.sh passes",
         "shellcheck hooks/session-start.sh reports no error-level findings"
       ]
     },
     {
-      "id": "US-P1-1",
-      "title": "stop.sh: memory consolidation prompt on completion",
-      "priority": 4,
+      "id": "T4-T5",
+      "title": "multica-workflow + persistence-loop skill updates",
+      "priority": 2,
       "passes": false,
       "acceptanceCriteria": [
-        "hooks/stop.sh on DONE path: writes a memory consolidation prompt to .multica/state/consolidation-prompt.txt",
-        "Prompt instructs a haiku subagent to: read recent issue comments, extract valuable learnings, append to .multica/learnings.jsonl in correct JSONL format",
-        "Prompt includes the format spec: {ts, skill, type, key, insight, confidence, source, branch, commit, files}",
-        "Prompt instructs: only write high-confidence (>=7) learnings, skip uncertain ones",
-        "File is written only when MULTICA_ISSUE_ID is set (issue context exists)",
-        "stop.sh still exits correctly after writing the prompt file"
+        "skills/core/multica-workflow.md phase transition comments include [phase] prefix format example: '[phase] discover→plan'",
+        "skills/core/multica-workflow.md context budget section references $MULTICA_CONTEXT_CHECKPOINT_PCT and $MULTICA_CONTEXT_BLOCKED_PCT instead of hardcoded 35/25",
+        "skills/advanced/persistence-loop.md max_iterations references $MULTICA_LOOP_MAX_ITERATIONS instead of hardcoded 50"
       ]
     },
     {
-      "id": "US-P1-2",
-      "title": "smoke: v0.4.0 knowledge management scenarios",
-      "priority": 5,
+      "id": "T6-T7-T8",
+      "title": "docs updates + VERSION bump",
+      "priority": 3,
       "passes": false,
       "acceptanceCriteria": [
-        "tests/smoke/run-claude.sh contains Scenario 8: curate-memory.sh dedup test (two entries with same key, verify only latest remains after curate)",
-        "tests/smoke/run-claude.sh contains Scenario 9: staleness detection (fixture learning with non-existent source file, verify '[possibly stale]' appears in session-start output)",
-        "tests/smoke/run-claude.sh contains Scenario 10: notepad prune (fixture notepad with 8-day-old Working Memory entry, run stop.sh DONE path, verify old entry removed)",
-        "bash tests/smoke/run-claude.sh exits 0 with FAIL: 0 (all scenarios including 1-10)"
+        "KNOWN-LIMITATIONS.md contains prominent warning about git repository requirement for learnings sync",
+        "CLAUDE.md Hooks Registration section contains note about paths resolved at install time",
+        "VERSION contains 0.5.0",
+        "CHANGELOG.md contains [0.5.0] entry with v0.5.0 features"
+      ]
+    },
+    {
+      "id": "T9-SMOKE",
+      "title": "smoke regression: all 50 tests pass",
+      "priority": 4,
+      "passes": false,
+      "acceptanceCriteria": [
+        "bash tests/smoke/run-claude.sh exits 0 with FAIL: 0"
       ]
     }
   ]

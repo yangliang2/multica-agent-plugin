@@ -86,6 +86,10 @@ git clone https://github.com/your-org/multica-agent-plugin.git
 | Gemini CLI | Roadmap |
 | OpenCode | Roadmap |
 
+## Documentation
+
+- **[Usage Guide](docs/USAGE.md)** — Setup, feature overview, agent operating contract, skill reference, troubleshooting. Dual-audience: human readers (§1–2) and agents running inside the Multica daemon (§3–4).
+
 ## CLI Reference
 
 The canonical `multica` CLI reference is in [`docs/cli-reference.md`](docs/cli-reference.md). It is locked via [`docs/cli-reference.lock`](docs/cli-reference.lock) (SHA-256 of the reference file).

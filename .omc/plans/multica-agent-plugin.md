@@ -945,3 +945,129 @@ daemon 检测 `resp.Agent.Instructions` 是否包含 `"## Squad Operating Protoc
 - 删除 `$MULTICA_IS_LEADER` 环境变量方案
 - session-start hook 改为：检测 `$MULTICA_PLUGIN_ROOT/skills/advanced/persistence-loop.md` + grep Instructions 是否含 `## Squad Operating Protocol`
 - `squad-workflow.md` 核心约束：每 turn 必须调 `multica squad activity`，no_action 时静默退出不写 comment
+
+---
+
+## v0.3.0 Roadmap — 可靠性提升 + Subagent Dispatch
+
+### 背景：推动方式的可靠性问题
+
+深度研究 GSD（get-shit-done）后发现，agent 工作流的推动可靠性差异很大：
+
+| 推动方式 | 可靠性 | 例子 |
+|---------|--------|------|
+| 程序 spot-check（文件存在性）| 高 | GSD 用 SUMMARY.md 存在 + git commit 检测完成 |
+| shell 脚本强制（grep/flock）| 高 | stop.sh 的 `<promise>DONE</promise>` 检测 |
+| 环境变量注入 | 高 | session-start 注入已知值到 context |
+| LLM 读 skill 文字 + 执行命令 | 中 | verification Gate Function（执行命令看输出）|
+| LLM 纯纪律（文字约定）| 低 | squad activity 每 turn 必调用、3-strike 计数 |
+
+**当前插件的主要可靠性缺口**（v0.1.0 + v0.2.0 都有）：
+- 3-strike 计数：LLM 靠 `metadata.set` 自己记，容易出错
+- squad activity 强制：stop.sh 只是事后写 warning，不直接修复
+- delegation 决策：leader 选策略靠读 skill 文字，无程序追踪
+- 模型路由：skill 文字说"haiku/sonnet/opus"，LLM 自己判断
+
+### GSD 对我们的启发（深度研究结论）
+
+**GSD 真正做的关键设计**：
+1. **文件系统是 agent 间通信总线**：PLAN.md/SUMMARY.md 有严格的 frontmatter schema，程序 parse 而非 LLM 读文字
+2. **Spot-check 优先于 marker**：orchestrator 看 git commit + SUMMARY.md 存在，不只依赖 LLM 写标记
+3. **模型路由是程序决定**：`gsd-sdk query resolve-model <agent>` 返回 opus/sonnet/haiku，不让 LLM 猜
+4. **Wave 依赖是程序解析**：PLAN.md frontmatter 的 `depends_on` 字段，程序算依赖图
+5. **Context budget 程序监控**：PostToolUse hook 读 token 计数，≤35% 注入 WARNING，≤25% 注入 CRITICAL
+
+### v0.3.0 核心交付（4 个高 ROI 可靠性提升）
+
+**P0 — 3-strike 计数程序化**
+
+现状：LLM 靠 `metadata.set` 自己记 bounce 次数，容易忘或记错。
+
+修复方案：
+- `hooks/session-start.sh` 从 `.multica/state/<issue_id>/hitl-bounces.json` 读取计数
+- 格式：`{"<question_id>": {"count": 2, "last_at": "<ISO8601>", "tier": "leader"}}`
+- session-start 注入到 additionalContext：`"HITL bounce count for <question_id>: 2/3"`
+- LLM 看到明确数字，不用自己数
+- member skill 写 bounce 时也更新文件（而非只靠 metadata.set）
+
+**P0 — squad activity 调用强制化**
+
+现状：stop.sh 检测到跳过时只写 warning 文件，下次 session 才提示。
+
+修复方案：
+- stop.sh 检测 leader 跳过 activity 时，**直接调用** `multica squad activity <id> failed --reason "activity-not-recorded-by-agent"`
+- 让 multica server 端留下记录，不依赖 LLM 在下次 session 看到 warning 再处理
+- 同时保留 squad-audit-warning 文件，让 session-start 也能提示
+
+**P1 — subagent dispatch 规范**（借鉴 GSD 的 agent tier 设计）
+
+新增 `skills/advanced/subagent-dispatch.md`，规定：
+
+模型路由规则：
+```
+Task(subagent_type="oh-my-claudecode:executor", model="haiku")
+  → 机械实现（单文件、明确规范、无判断）
+
+Task(subagent_type="oh-my-claudecode:executor", model="sonnet")
+  → 标准实现（多文件协调、需要判断）
+
+Task(subagent_type="oh-my-claudecode:code-reviewer", model="opus")
+  → 架构 review、安全检查
+
+Task(subagent_type="oh-my-claudecode:debugger", model="sonnet")
+  → 调试（根因分析）
+```
+
+Fresh context 原则（来自 GSD）：
+- subagent 不继承主 session 的对话历史
+- prompt 必须包含完整的任务上下文（不能说"参考 issue 做 X"）
+- subagent 输出结果写入文件（SUMMARY.md 风格）或 multica comment，不依赖 return value
+
+**P1 — 模型路由从 skill 文字变成环境变量注入**
+
+`hooks/session-start.sh` 读 `capabilities/claude-code.json` 中的模型配置（待新增字段），
+注入：
+```bash
+MULTICA_MODEL_FAST=haiku      # 机械任务
+MULTICA_MODEL_STD=sonnet      # 标准任务
+MULTICA_MODEL_DEEP=opus       # 复杂/review 任务
+```
+
+subagent-dispatch.md 引用这些变量而非硬编码模型名，未来升级模型只改 capabilities JSON。
+
+**P2 — Context budget 感知（借鉴 GSD context-monitor）**
+
+`hooks/session-start.sh` 扩展（或新增 pre-tool hook）：
+- 读取 Claude Code 的 context usage 指标（如有）
+- 注入 context 状态到 additionalContext：
+  - `>35%` 剩余：正常
+  - `≤35%`：`[context-warning] checkpoint before new work`
+  - `≤25%`：`[context-critical] summarize and blocked`
+- `multica-workflow.md` 新增规则：收到 context-critical 时写 checkpoint comment + blocked
+
+### 新增文件
+
+| 文件 | 内容 |
+|------|------|
+| `skills/advanced/subagent-dispatch.md` | subagent 派发规范：模型路由 + fresh context 原则 + 输出格式 |
+| `.multica/state/<issue_id>/hitl-bounces.json` | 3-strike 计数的程序存储（运行时生成，非静态文件）|
+
+### 修改文件
+
+| 文件 | 修改内容 |
+|------|---------|
+| `hooks/stop.sh` | leader 跳过 activity 时直接调用 `multica squad activity failed` |
+| `hooks/session-start.sh` | 读 hitl-bounces.json 注入计数 + 注入模型环境变量 |
+| `skills/core/squad-member-workflow.md` | bounce 计数写文件（不只靠 metadata.set）|
+| `capabilities/claude-code.json` | 新增 model_routing 字段 |
+
+### 可靠性改进对比
+
+| 机制 | v0.2.0 | v0.3.0 |
+|------|--------|--------|
+| 3-strike 计数 | LLM metadata.set（低）| 文件 + session-start 注入（高）|
+| squad activity 强制 | 事后 warning（低）| stop.sh 直接调用（高）|
+| 模型路由 | skill 文字（低）| 环境变量注入（高）|
+| subagent dispatch | parallel-exec.md 文字（低）| subagent-dispatch.md 明确规范（中）|
+| context budget | 无 | hook 监控 + workflow 规则（中）|
+

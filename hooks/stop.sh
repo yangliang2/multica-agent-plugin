@@ -38,6 +38,12 @@ dedup_hash() {
 
 MULTICA_WORKDIR="${MULTICA_WORKDIR:-$(pwd)}"
 STATE_ROOT="${MULTICA_WORKDIR}/.multica/state"
+HOOK_LOG="${MULTICA_WORKDIR}/.multica/logs/hook-errors.log"
+
+log_error() {
+  mkdir -p "$(dirname "$HOOK_LOG")"
+  echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] [stop.sh] $*" >> "$HOOK_LOG" 2>/dev/null || true
+}
 
 issue_id=""
 if [[ -n "${MULTICA_ISSUE_ID:-}" ]]; then
@@ -66,10 +72,6 @@ if [[ "$active" != "true" ]]; then
   exit 0
 fi
 
-if [[ -n "$(find "$LOOP_JSON" -mmin -1 2>/dev/null)" ]]; then
-  exit 2
-fi
-
 done_signal=false
 
 if [[ -n "${CLAUDE_TOOL_OUTPUT:-}" ]]; then
@@ -84,6 +86,12 @@ if [[ "$done_signal" == "false" && -n "${MULTICA_OUTPUT_FILE:-}" && -f "${MULTIC
   fi
 fi
 
+if [[ "$done_signal" == "false" ]]; then
+  if [[ -n "$(find "$LOOP_JSON" -mmin -1 2>/dev/null)" ]]; then
+    exit 2
+  fi
+fi
+
 squad_leader_audit() {
   local _squad_marker="## Squad Operating Protocol"
   local _claude_md="${MULTICA_WORKDIR}/CLAUDE.md"
@@ -94,7 +102,7 @@ squad_leader_audit() {
       if [[ ! -f "$_marker_file" ]]; then
         if command -v multica >/dev/null 2>&1; then
           multica squad activity "$MULTICA_ISSUE_ID" failed \
-            --reason "activity-not-recorded-by-agent" 2>/dev/null || true
+            --reason "activity-not-recorded-by-agent" 2>/dev/null || log_error "failed to call squad activity"
         fi
         mkdir -p "${MULTICA_WORKDIR}/.multica/state"
         echo "Squad activity not recorded for issue ${MULTICA_ISSUE_ID} at $(date -u +%Y-%m-%dT%H:%M:%SZ)" > "$_warn_file"
@@ -105,10 +113,18 @@ squad_leader_audit() {
 }
 
 if [[ "$done_signal" == "true" ]]; then
-  multica issue comment add \
-    --issue "$issue_id" \
-    --body "[loop-complete] All stories verified. Loop finished at iteration ${iteration}." \
-    2>/dev/null || true
+  # Cross-check: if loop.json exists, verify no stories are still pending
+  if [[ -f "$LOOP_JSON" ]]; then
+    if grep -qF '"passes": false' "$LOOP_JSON" 2>/dev/null; then
+      done_signal=false
+    fi
+  fi
+fi
+
+if [[ "$done_signal" == "true" ]]; then
+  multica issue comment add "$issue_id" \
+    --content "[loop-complete] All stories verified. Loop finished at iteration ${iteration}." \
+    2>/dev/null || log_error "failed to post loop-complete comment"
 
   updated_json=$(cat "$LOOP_JSON" \
     | sed 's/"active":[[:space:]]*true/"active": false/' \
@@ -121,7 +137,7 @@ if [[ "$done_signal" == "true" ]]; then
       git -C "$MULTICA_WORKDIR" add "$_learnings" 2>/dev/null || true
       if ! git -C "$MULTICA_WORKDIR" diff --cached --quiet 2>/dev/null; then
         git -C "$MULTICA_WORKDIR" commit -m "chore(knowledge): update learnings [skip ci]" \
-          2>/dev/null || true
+          2>/dev/null || log_error "failed to git commit learnings"
       fi
     fi
   fi
@@ -166,7 +182,12 @@ You are a knowledge curator. Your task:
 
 4. If no valuable learnings found, do nothing (do not write empty entries).
 PROMPT_EOF
-    sed -i "s/\${MULTICA_ISSUE_ID}/${MULTICA_ISSUE_ID}/g" "$_prompt_file" 2>/dev/null || true
+    python3 -c "
+import sys
+content = open(sys.argv[1]).read()
+content = content.replace('\${MULTICA_ISSUE_ID}', sys.argv[2])
+open(sys.argv[1], 'w').write(content)
+" "$_prompt_file" "${MULTICA_ISSUE_ID}" 2>/dev/null || true
   fi
 
   exit 0
@@ -174,14 +195,13 @@ fi
 
 hash=$(dedup_hash "$issue_id" "$iteration" "$phase")
 
-existing=$(multica issue comment list --issue "$issue_id" 2>/dev/null \
+existing=$(multica issue comment list "$issue_id" 2>/dev/null \
   | grep -F "[checkpoint:${hash}]" || true)
 
 if [[ -z "$existing" ]]; then
-  multica issue comment add \
-    --issue "$issue_id" \
-    --body "[checkpoint:${hash}] Loop active at iteration ${iteration}, phase=${phase}. Continuing." \
-    2>/dev/null || true
+  multica issue comment add "$issue_id" \
+    --content "[checkpoint:${hash}] Loop active at iteration ${iteration}, phase=${phase}. Continuing." \
+    2>/dev/null || log_error "failed to post loop-complete comment"
 fi
 
 squad_leader_audit

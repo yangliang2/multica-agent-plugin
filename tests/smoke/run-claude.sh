@@ -129,7 +129,19 @@ else
 fi
 
 # Now set DONE signal and re-run — expect exit 0
-# Reset mtime again so throttle does not fire
+# Update loop.json to have all stories passing (cross-check requirement)
+cat > "$LOOP_JSON" <<'LOOP'
+{
+  "active": true,
+  "iteration": 1,
+  "max_iterations": 50,
+  "issue_id": "test-issue-smoke",
+  "phase": "execution",
+  "stories": [
+    {"id": "S1", "title": "story one", "acceptance": "criterion", "passes": true}
+  ]
+}
+LOOP
 touch -t 200001010000 "$LOOP_JSON"
 
 MULTICA_WORKDIR="$TMPDIR_SMOKE" \
@@ -209,7 +221,13 @@ check_file "${PLUGIN_ROOT}/docs/cli-reference.lock"
 # Lock file sha256 must match docs/cli-reference.md
 if [[ -f "${PLUGIN_ROOT}/docs/cli-reference.lock" && -f "${PLUGIN_ROOT}/docs/cli-reference.md" ]]; then
   lock_hash=$(awk '{print $1}' "${PLUGIN_ROOT}/docs/cli-reference.lock")
-  actual_hash=$(sha256sum "${PLUGIN_ROOT}/docs/cli-reference.md" | awk '{print $1}')
+  if command -v sha256sum >/dev/null 2>&1; then
+    actual_hash=$(sha256sum "${PLUGIN_ROOT}/docs/cli-reference.md" | awk '{print $1}')
+  elif command -v shasum >/dev/null 2>&1; then
+    actual_hash=$(shasum -a 256 "${PLUGIN_ROOT}/docs/cli-reference.md" | awk '{print $1}')
+  else
+    actual_hash=""
+  fi
   if [[ "$lock_hash" == "$actual_hash" ]]; then
     pass "docs/cli-reference.lock sha256 matches docs/cli-reference.md"
   else
@@ -310,7 +328,7 @@ EOF
 
 mkdir -p "$tmpdir_s7/.multica/state/test-issue-123"
 
-# Create an active loop.json with old mtime so throttle does not fire
+# Create an active loop.json with all stories passing and old mtime
 cat > "$tmpdir_s7/.multica/state/test-issue-123/loop.json" <<'LOOP'
 {
   "active": true,
@@ -319,7 +337,7 @@ cat > "$tmpdir_s7/.multica/state/test-issue-123/loop.json" <<'LOOP'
   "issue_id": "test-issue-123",
   "phase": "execution",
   "stories": [
-    {"id": "S1", "title": "story one", "acceptance": "criterion", "passes": false}
+    {"id": "S1", "title": "story one", "acceptance": "criterion", "passes": true}
   ]
 }
 LOOP
@@ -349,7 +367,7 @@ fi
 touch "$tmpdir_s7/.multica/state/test-issue-123/squad-activity.marker"
 rm -f "$tmpdir_s7/.multica/state/squad-audit-warning"
 
-# Restore active loop.json with old mtime for second run
+# Restore active loop.json with all stories passing for second run
 cat > "$tmpdir_s7/.multica/state/test-issue-123/loop.json" <<'LOOP'
 {
   "active": true,
@@ -358,7 +376,7 @@ cat > "$tmpdir_s7/.multica/state/test-issue-123/loop.json" <<'LOOP'
   "issue_id": "test-issue-123",
   "phase": "execution",
   "stories": [
-    {"id": "S1", "title": "story one", "acceptance": "criterion", "passes": false}
+    {"id": "S1", "title": "story one", "acceptance": "criterion", "passes": true}
   ]
 }
 LOOP

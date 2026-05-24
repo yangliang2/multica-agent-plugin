@@ -68,12 +68,12 @@ multica-agent-plugin/
 
 ## Installation
 
-> Installation instructions will be added once the packaging format is finalized.
+See [docs/USAGE.md](docs/USAGE.md) for complete installation and setup instructions.
 
-For now, clone and symlink manually:
+For quick setup, clone and symlink manually:
 
 ```bash
-git clone https://github.com/your-org/multica-agent-plugin.git
+git clone https://github.com/yangliang2/multica-agent-plugin.git
 # Wire into your Claude Code config per your harness setup
 ```
 

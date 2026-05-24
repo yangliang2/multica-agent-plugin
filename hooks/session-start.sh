@@ -4,6 +4,7 @@ set -euo pipefail
 MULTICA_WORKDIR="${MULTICA_WORKDIR:-$(pwd)}"
 NOTEPAD="${MULTICA_WORKDIR}/.multica/notepad.md"
 LEARNINGS="${MULTICA_WORKDIR}/.multica/learnings.jsonl"
+HOOK_LOG="${MULTICA_WORKDIR}/.multica/logs/hook-errors.log"
 
 json_escape() {
   local s="$1"
@@ -206,10 +207,19 @@ if [[ -f "$_caps_file" ]] && command -v jq >/dev/null 2>&1; then
   [[ -n "$_fast" ]] && MULTICA_MODEL_FAST="$_fast"
   [[ -n "$_std" ]] && MULTICA_MODEL_STD="$_std"
   [[ -n "$_deep" ]] && MULTICA_MODEL_DEEP="$_deep"
+else
+  if ! command -v jq >/dev/null 2>&1; then
+    context_parts+=("## Config Warning"$'\n'"jq not available — model routing using built-in defaults (haiku/sonnet/opus). Install jq to enable custom routing.")
+  fi
 fi
 export MULTICA_MODEL_FAST MULTICA_MODEL_STD MULTICA_MODEL_DEEP
 
 context_parts+=("## Model Routing"$'\n'"Model routing: fast=${MULTICA_MODEL_FAST} std=${MULTICA_MODEL_STD} deep=${MULTICA_MODEL_DEEP}")
+
+if [[ -f "$HOOK_LOG" && -s "$HOOK_LOG" ]]; then
+  recent_errors=$(tail -3 "$HOOK_LOG")
+  context_parts+=("## Hook Errors (recent)"$'\n'"$recent_errors")
+fi
 
 if [[ ${#context_parts[@]} -eq 0 ]]; then
   printf '{"hookSpecificOutput": {"additionalContext": ""}}\n'

@@ -28,9 +28,8 @@ fi
 post_comment() {
   local body="$1"
   if [[ -n "$issue_id" ]]; then
-    multica issue comment add \
-      --issue "$issue_id" \
-      --body "$body" \
+    multica issue comment add "$issue_id" \
+      --content "$body" \
       2>/dev/null || true
   fi
 }

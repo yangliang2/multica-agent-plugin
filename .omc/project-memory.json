@@ -99,21 +99,189 @@
   },
   "hotPaths": [
     {
-      "path": "hooks/session-start.sh",
-      "accessCount": 8,
-      "lastAccessed": 1779625958380,
+      "path": "hooks/stop.sh",
+      "accessCount": 24,
+      "lastAccessed": 1779631358678,
       "type": "file"
     },
     {
-      "path": "hooks/stop.sh",
-      "accessCount": 6,
-      "lastAccessed": 1779625837839,
+      "path": "hooks/session-start.sh",
+      "accessCount": 19,
+      "lastAccessed": 1779631232317,
+      "type": "file"
+    },
+    {
+      "path": "README.md",
+      "accessCount": 12,
+      "lastAccessed": 1779631173903,
+      "type": "file"
+    },
+    {
+      "path": "tests/smoke/run-claude.sh",
+      "accessCount": 10,
+      "lastAccessed": 1779631660630,
       "type": "file"
     },
     {
       "path": "tools/curate-memory.sh",
+      "accessCount": 7,
+      "lastAccessed": 1779627758564,
+      "type": "file"
+    },
+    {
+      "path": "docs/USAGE.md",
+      "accessCount": 6,
+      "lastAccessed": 1779627728408,
+      "type": "file"
+    },
+    {
+      "path": "KNOWN-LIMITATIONS.md",
+      "accessCount": 6,
+      "lastAccessed": 1779627729890,
+      "type": "file"
+    },
+    {
+      "path": "CHANGELOG.md",
+      "accessCount": 5,
+      "lastAccessed": 1779627689356,
+      "type": "file"
+    },
+    {
+      "path": "install.sh",
+      "accessCount": 5,
+      "lastAccessed": 1779627728132,
+      "type": "file"
+    },
+    {
+      "path": "AGENTS.md",
+      "accessCount": 5,
+      "lastAccessed": 1779627728974,
+      "type": "file"
+    },
+    {
+      "path": "CLAUDE.md",
+      "accessCount": 5,
+      "lastAccessed": 1779627759681,
+      "type": "file"
+    },
+    {
+      "path": "hooks/pre-tool.sh",
       "accessCount": 4,
-      "lastAccessed": 1779625744998,
+      "lastAccessed": 1779631204617,
+      "type": "file"
+    },
+    {
+      "path": "VERSION",
+      "accessCount": 3,
+      "lastAccessed": 1779626649165,
+      "type": "file"
+    },
+    {
+      "path": "skills/core/multica-workflow.md",
+      "accessCount": 3,
+      "lastAccessed": 1779627718800,
+      "type": "file"
+    },
+    {
+      "path": "skills/core/hitl-protocol.md",
+      "accessCount": 3,
+      "lastAccessed": 1779627719780,
+      "type": "file"
+    },
+    {
+      "path": "hooks/hooks.json",
+      "accessCount": 3,
+      "lastAccessed": 1779627727792,
+      "type": "file"
+    },
+    {
+      "path": "capabilities/claude-code.json",
+      "accessCount": 3,
+      "lastAccessed": 1779627758034,
+      "type": "file"
+    },
+    {
+      "path": "skills/core/verification.md",
+      "accessCount": 2,
+      "lastAccessed": 1779627720350,
+      "type": "file"
+    },
+    {
+      "path": "skills/core/systematic-debug.md",
+      "accessCount": 2,
+      "lastAccessed": 1779627720896,
+      "type": "file"
+    },
+    {
+      "path": "skills/core/squad-leader-workflow.md",
+      "accessCount": 2,
+      "lastAccessed": 1779627721906,
+      "type": "file"
+    },
+    {
+      "path": "skills/core/squad-member-workflow.md",
+      "accessCount": 2,
+      "lastAccessed": 1779627722429,
+      "type": "file"
+    },
+    {
+      "path": "skills/advanced/persistence-loop.md",
+      "accessCount": 2,
+      "lastAccessed": 1779627722962,
+      "type": "file"
+    },
+    {
+      "path": "skills/advanced/parallel-exec.md",
+      "accessCount": 2,
+      "lastAccessed": 1779627723490,
+      "type": "file"
+    },
+    {
+      "path": "skills/advanced/subagent-dispatch.md",
+      "accessCount": 2,
+      "lastAccessed": 1779627724038,
+      "type": "file"
+    },
+    {
+      "path": "uninstall.sh",
+      "accessCount": 2,
+      "lastAccessed": 1779627730048,
+      "type": "file"
+    },
+    {
+      "path": "docs/review-2026-05-24.md",
+      "accessCount": 2,
+      "lastAccessed": 1779631047337,
+      "type": "file"
+    },
+    {
+      "path": "docs/cli-reference.md",
+      "accessCount": 2,
+      "lastAccessed": 1779631130365,
+      "type": "file"
+    },
+    {
+      "path": "docs/abi/cli-outward.md",
+      "accessCount": 2,
+      "lastAccessed": 1779631130894,
+      "type": "file"
+    },
+    {
+      "path": "tools/render-anchors.sh",
+      "accessCount": 1,
+      "lastAccessed": 1779627725566,
+      "type": "file"
+    },
+    {
+      "path": "tools/refresh-cli-reference.sh",
+      "accessCount": 1,
+      "lastAccessed": 1779627726095,
+      "type": "file"
+    },
+    {
+      "path": "docs/concurrency-model.md",
+      "accessCount": 1,
+      "lastAccessed": 1779627727655,
       "type": "file"
     }
   ],

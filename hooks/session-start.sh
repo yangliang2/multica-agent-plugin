@@ -1,6 +1,19 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Multica session guard: only run in Multica daemon context
+if [[ "${DISABLE_MULTICA_PLUGIN:-0}" == "1" ]]; then
+  exit 0
+fi
+_is_multica=false
+if [[ -n "${MULTICA_ISSUE_ID:-}" ]] || [[ "${MULTICA_AGENT_SESSION:-1}" == "1" ]]; then
+  _is_multica=true
+fi
+if [[ "$_is_multica" == "false" ]]; then
+  printf '{"hookSpecificOutput": {"additionalContext": ""}}\n'
+  exit 0
+fi
+
 MULTICA_WORKDIR="${MULTICA_WORKDIR:-$(pwd)}"
 NOTEPAD="${MULTICA_WORKDIR}/.multica/notepad.md"
 LEARNINGS="${MULTICA_WORKDIR}/.multica/learnings.jsonl"

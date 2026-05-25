@@ -1338,3 +1338,26 @@ input (AskUserQuestion) which is disabled in daemon mode.
 | `KNOWN-LIMITATIONS.md` | 共存说明 |
 | `install.sh` | 打印 hooks 注册路径 |
 
+
+---
+
+### v0.6.0 补充：旅程 C 摩擦点（Squad 模式）
+
+| # | 摩擦点 | 严重程度 | 文档位置 |
+|---|--------|---------|---------|
+| 1 | Squad 前置配置未说明（需先在 Multica 建 Squad，添加 leader/member）| 高 | HUMAN-GUIDE.md |
+| 2 | 所有 member agent runtime 也需要装插件，文档未说明 | 高 | QUICKSTART.md + HUMAN-GUIDE.md |
+| 3 | Issue 描述模糊时 leader 会 HITL，用户不理解为什么 | 中 | HUMAN-GUIDE.md |
+| 4 | 多 issue 同时 in_progress，用户不确定是并行正常还是异常 | 中 | HUMAN-GUIDE.md |
+| 5 | Member HITL 被 leader 转发后，用户不知道回复哪条 | 中 | HUMAN-GUIDE.md + hitl-protocol.md |
+| 6 | 子 issue 完成后父 issue 何时更新、leader 何时汇总，不透明 | 中 | HUMAN-GUIDE.md |
+
+**新增文档内容**：HUMAN-GUIDE.md 加 "Squad Mode Walkthrough" 节（完整生命周期图示）：
+1. 在 Multica 创建 Squad（含 leader + members）
+2. 每个 agent runtime 安装插件
+3. 创建 issue 分配给 Squad
+4. Leader 被唤醒 → 拆分子 issue（Strategy A/B 决策）
+5. Member 并行执行（多 issue in_progress 是正常的）
+6. Member HITL → leader 路由 → human（回复 leader 转发的那条）
+7. 所有子任务完成 → leader 被唤醒汇总 → 父 issue done
+

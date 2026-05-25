@@ -1,6 +1,18 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Multica session guard: only run in Multica daemon context
+if [[ "${DISABLE_MULTICA_PLUGIN:-0}" == "1" ]]; then
+  exit 0
+fi
+_is_multica=false
+if [[ -n "${MULTICA_ISSUE_ID:-}" ]] || [[ "${MULTICA_AGENT_SESSION:-1}" == "1" ]]; then
+  _is_multica=true
+fi
+if [[ "$_is_multica" == "false" ]]; then
+  exit 0
+fi
+
 # pre-tool.sh — Multica destructive-guard proxy (Claude Code PreToolUse hook)
 #
 # Thin proxy: passes tool arguments to `multica safe-exec` for capability gating.

@@ -1,6 +1,18 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Multica session guard: only run in Multica daemon context
+if [[ "${DISABLE_MULTICA_PLUGIN:-0}" == "1" ]]; then
+  exit 0
+fi
+_is_multica=false
+if [[ -n "${MULTICA_ISSUE_ID:-}" ]] || [[ "${MULTICA_AGENT_SESSION:-1}" == "1" ]]; then
+  _is_multica=true
+fi
+if [[ "$_is_multica" == "false" ]]; then
+  exit 0
+fi
+
 die() { echo "[stop.sh] ERROR: $*" >&2; exit 1; }
 
 atomic_write() {
@@ -122,8 +134,14 @@ if [[ "$done_signal" == "true" ]]; then
 fi
 
 if [[ "$done_signal" == "true" ]]; then
+  # Count committed learnings if possible
+  _learnings_count=0
+  if [[ -f "${MULTICA_WORKDIR}/.multica/learnings.jsonl" ]]; then
+    _learnings_count=$(wc -l < "${MULTICA_WORKDIR}/.multica/learnings.jsonl" 2>/dev/null || echo 0)
+  fi
+
   multica issue comment add "$issue_id" \
-    --content "[loop-complete] All stories verified. Loop finished at iteration ${iteration}." \
+    --content "[loop-complete] All stories verified at iteration ${iteration}. Knowledge: ${_learnings_count} learnings on record." \
     2>/dev/null || log_error "failed to post loop-complete comment"
 
   updated_json=$(cat "$LOOP_JSON" \

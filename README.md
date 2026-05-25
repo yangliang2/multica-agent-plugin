@@ -77,6 +77,15 @@ git clone https://github.com/yangliang2/multica-agent-plugin.git
 # Wire into your Claude Code config per your harness setup
 ```
 
+## Compatibility
+
+| Component | Minimum Version |
+|-----------|----------------|
+| multica CLI | 0.3.4 |
+| Claude Code | latest |
+| python3 | 3.8 |
+| git | 2.x |
+
 ## Supported Frameworks
 
 | Harness | Status |
@@ -88,7 +97,12 @@ git clone https://github.com/yangliang2/multica-agent-plugin.git
 
 ## Documentation
 
-- **[Usage Guide](docs/USAGE.md)** — Setup, feature overview, agent operating contract, skill reference, troubleshooting. Dual-audience: human readers (§1–2) and agents running inside the Multica daemon (§3–4).
+| Who you are | Where to start |
+|-------------|----------------|
+| First-time setup | [QUICKSTART.md](docs/QUICKSTART.md) — up and running in 5 minutes |
+| Operator / developer | [HUMAN-GUIDE.md](docs/HUMAN-GUIDE.md) — full feature reference and troubleshooting |
+| Issue reviewer | [HUMAN-GUIDE.md#for-reviewers](docs/HUMAN-GUIDE.md#for-reviewers) — reading agent comment trails |
+| Agent (running inside Multica daemon) | [AGENT-CONTRACT.md](docs/AGENT-CONTRACT.md) — normative operating contract |
 
 ## CLI Reference
 

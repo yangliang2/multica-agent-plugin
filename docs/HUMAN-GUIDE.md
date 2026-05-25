@@ -102,6 +102,53 @@ child issues (parallel) or @mention (serial).
 **You will see:** Multiple agents posting comments on related issues; a squad leader
 posting coordination summaries.
 
+### Squad Mode Walkthrough
+
+**Prerequisites:**
+1. Create a Squad in Multica (Settings → Squads → New Squad)
+   - Add a leader agent (e.g., `claude-code-leader`)
+   - Add member agents (e.g., `claude-code-frontend`, `claude-code-backend`)
+2. **Install this plugin on every agent's Claude Code runtime** — both leader and all members
+   need the plugin for verification Iron Law and HITL protocols to work
+
+**Step-by-step:**
+
+1. **Create an issue and assign to the Squad** (not to an individual agent)
+   ```
+   multica issue create --title "Refactor payment module" --assignee-id <squad-uuid>
+   ```
+
+2. **Leader is activated** — daemon detects Squad assignment and injects Squad Operating
+   Protocol into the leader's CLAUDE.md. The plugin's session-start hook detects this and
+   injects the squad roster into context.
+
+3. **Leader decomposes the task** — if the issue description is clear, leader delegates
+   immediately. If ambiguous, leader posts a `[HITL] phase=discover` question asking for
+   clarification. Reply to that comment to unblock.
+
+4. **Leader creates child issues** (parallel delegation):
+   ```
+   multica issue create --title "Frontend UI" --status todo --assignee-id <agent-uuid>
+   multica issue create --title "Backend API" --status todo --assignee-id <agent-uuid>
+   ```
+   Multiple issues showing `in_progress` simultaneously is **normal** — this is parallel execution.
+
+5. **Members work independently** — each member follows the standard 5-phase workflow.
+   If a member is blocked, it posts `[HITL:leader]` (not `[HITL:human]`), which triggers
+   the leader to wake up and route the decision.
+
+6. **HITL routing** — when you see a `[HITL:human]` comment, it means the leader could not
+   resolve it. **Reply to the `[HITL:human]` comment** (the one addressed to humans, not the
+   original member question).
+
+7. **Leader summarizes** — when all child issues complete, the parent issue receives a system
+   notification. Leader wakes up, posts a summary comment, and sets parent issue to `done`.
+
+**What to watch on the kanban:**
+- Multiple `in_progress` child issues = normal parallel execution
+- Parent issue stays `in_progress` until leader summarizes
+- `blocked` on any issue = someone needs your input (check for `[HITL:human]` comments)
+
 ### Subagent Dispatch
 
 Agents spawn specialist subagents (executor, code-reviewer, debugger) using model

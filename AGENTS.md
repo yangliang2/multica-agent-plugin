@@ -105,6 +105,9 @@ See `skills/core/hitl-protocol.md` for full protocol.
 - Never hold a file lock or network connection across a status=`blocked` exit.
 - The daemon reaper is the sole owner of timeout enforcement. Skills must not implement their own timeouts.
 - Each invocation is stateless except for what is persisted in issue comments and metadata.
+- Do NOT invoke OMC skills (/ralph, /autopilot, /team) or Superpowers skills
+  (/brainstorming) — they require AskUserQuestion which is disabled in daemon mode
+  and will cause the session to hang or produce unexpected output.
 
 ---
 

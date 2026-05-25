@@ -100,26 +100,26 @@
   "hotPaths": [
     {
       "path": "hooks/session-start.sh",
-      "accessCount": 26,
-      "lastAccessed": 1779634260596,
+      "accessCount": 28,
+      "lastAccessed": 1779723556418,
       "type": "file"
     },
     {
       "path": "hooks/stop.sh",
-      "accessCount": 24,
-      "lastAccessed": 1779631358678,
+      "accessCount": 28,
+      "lastAccessed": 1779723685203,
+      "type": "file"
+    },
+    {
+      "path": "README.md",
+      "accessCount": 16,
+      "lastAccessed": 1779723661028,
       "type": "file"
     },
     {
       "path": "skills/core/multica-workflow.md",
       "accessCount": 15,
       "lastAccessed": 1779634297467,
-      "type": "file"
-    },
-    {
-      "path": "README.md",
-      "accessCount": 12,
-      "lastAccessed": 1779631173903,
       "type": "file"
     },
     {
@@ -141,6 +141,18 @@
       "type": "file"
     },
     {
+      "path": "docs/USAGE.md",
+      "accessCount": 8,
+      "lastAccessed": 1779636500655,
+      "type": "file"
+    },
+    {
+      "path": "docs/QUICKSTART.md",
+      "accessCount": 8,
+      "lastAccessed": 1779723631588,
+      "type": "file"
+    },
+    {
       "path": "tools/curate-memory.sh",
       "accessCount": 7,
       "lastAccessed": 1779627758564,
@@ -153,9 +165,9 @@
       "type": "file"
     },
     {
-      "path": "docs/USAGE.md",
-      "accessCount": 6,
-      "lastAccessed": 1779627728408,
+      "path": "AGENTS.md",
+      "accessCount": 7,
+      "lastAccessed": 1779723673493,
       "type": "file"
     },
     {
@@ -171,15 +183,15 @@
       "type": "file"
     },
     {
-      "path": "install.sh",
-      "accessCount": 5,
-      "lastAccessed": 1779627728132,
+      "path": "hooks/pre-tool.sh",
+      "accessCount": 6,
+      "lastAccessed": 1779723541476,
       "type": "file"
     },
     {
-      "path": "AGENTS.md",
+      "path": "install.sh",
       "accessCount": 5,
-      "lastAccessed": 1779627728974,
+      "lastAccessed": 1779627728132,
       "type": "file"
     },
     {
@@ -195,15 +207,15 @@
       "type": "file"
     },
     {
-      "path": "hooks/pre-tool.sh",
-      "accessCount": 4,
-      "lastAccessed": 1779631204617,
-      "type": "file"
-    },
-    {
       "path": "hooks/hooks.json",
       "accessCount": 3,
       "lastAccessed": 1779627727792,
+      "type": "file"
+    },
+    {
+      "path": "docs/HUMAN-GUIDE.md",
+      "accessCount": 3,
+      "lastAccessed": 1779723653389,
       "type": "file"
     },
     {
@@ -282,6 +294,18 @@
       "path": "docs/concurrency-model.md",
       "accessCount": 1,
       "lastAccessed": 1779627727655,
+      "type": "file"
+    },
+    {
+      "path": "docs/AGENT-CONTRACT.md",
+      "accessCount": 1,
+      "lastAccessed": 1779636410711,
+      "type": "file"
+    },
+    {
+      "path": "tools/doctor.sh",
+      "accessCount": 1,
+      "lastAccessed": 1779723587705,
       "type": "file"
     }
   ],

@@ -1191,3 +1191,150 @@ awk -v cutoff="$(date -d '7 days ago' +%Y-%m-%dT)" '
 | `hooks/stop.sh` | 完成路径：git commit learnings + notepad prune + memory consolidation subagent |
 | `hooks/session-start.sh` | learnings 注入前做 staleness 检测，标注可能过时的条目 |
 
+
+---
+
+## v0.6.0 Roadmap — 插件隔离 + 安装体验修复
+
+### 背景：用户旅程 A 摩擦点 + 插件冲突研究
+
+#### 旅程 A 完整摩擦点（工程师首次安装）
+
+| # | 摩擦点 | 严重程度 | 阶段 |
+|---|--------|---------|------|
+| 1 | multica 版本兼容关系未说明 | 高 | 发现 |
+| 2 | multica 安装链接缺失 | 中 | 看文档 |
+| 3 | git/python3 依赖没说明用途 | 低 | 看文档 |
+| 4 | MULTICA_PLUGIN_ROOT 跳过后功能降级无感知 | 高 | 安装 |
+| 5 | Daemon 部署场景 env var 配置未说明 | 高 | 安装 |
+| 6 | install.sh 未说明 hooks 注册到哪个文件 | 中 | 安装 |
+| 7 | smoke 通过 ≠ daemon 集成正确 | 高 | 验证 |
+| 8 | agent 跑起来无实时进度感知（multica 侧问题） | 中 | 第一个任务 |
+| 9 | HITL 回复方式不够直观 | 中 | 第一个任务 |
+| 10 | 任务完成后 learnings 等静默操作无感知 | 低 | 完成 |
+| 11 | issue status 未更新时 loop-complete 与看板不一致 | 中 | 完成 |
+
+#### 插件隔离研究结论（源码研究：OMC/GSD/Superpowers/oh-my-openagent）
+
+各框架的隔离策略：
+- **OMC**：`DISABLE_OMC=1` kill-switch + `doctor-conflicts.ts` 冲突检测
+- **GSD**：`data.tool_input?.is_subagent` 子 agent 检测 + 4个 Claude Code env var 平台检测
+- **Superpowers**：`CURSOR_PLUGIN_ROOT`/`CLAUDE_PLUGIN_ROOT`/`COPILOT_CLI` 平台差异化输出
+- **oh-my-openagent**：session-scoped remindedSessions Set 去重
+
+**multica-plugin 独有问题**：其他框架区分的是"平台类型"（Claude Code vs Cursor），multica-plugin 需要区分的是"调用者类型"（Multica daemon spawn vs 用户手动开）。这是原创问题，没有现成方案可抄。
+
+**实际冲突点**：
+1. Stop hook：可共存（Claude Code 语义：任一 exit 2 就 block）
+2. SessionStart hook：互相污染 context（OMC/GSD/multica-plugin 三者都注入，叠加 1000+ token 噪音）
+3. Skill 可见性：OMC ralph/Superpowers brainstorming 在 multica daemon session 里可见，可能被 agent 误调用
+
+### v0.6.0 核心交付
+
+**P0 — 插件隔离（双重 guard）**
+
+所有 hook 顶部加两层检测：
+
+```bash
+# Layer 1: kill-switch（与其他框架共存时手动关闭）
+[[ "${DISABLE_MULTICA_PLUGIN:-0}" == "1" ]] && exit 0
+
+# Layer 2: Multica daemon session 检测（核心隔离）
+# MULTICA_ISSUE_ID 是 daemon spawn 时必然注入的 env var
+# MULTICA_AGENT_SESSION=1 是 operator 在 daemon 配置里显式开启的
+if [[ -z "${MULTICA_ISSUE_ID:-}" ]] && [[ "${MULTICA_AGENT_SESSION:-0}" != "1" ]]; then
+  # Not a Multica daemon session — skip entirely
+  # For SessionStart: emit empty additionalContext instead of exit 0
+  exit 0
+fi
+```
+
+SessionStart hook 特殊处理（不能 exit 0，要输出合法 JSON）：
+```bash
+if [[ "$_is_multica" == "false" ]]; then
+  printf '{"hookSpecificOutput": {"additionalContext": ""}}\n'
+  exit 0
+fi
+```
+
+**P0 — tools/doctor.sh**
+
+```
+[doctor] Environment
+  MULTICA_PLUGIN_ROOT: /path/to/plugin ✓
+  MULTICA_ISSUE_ID: not set (normal outside daemon)
+  MULTICA_AGENT_SESSION: not set (set to 1 in daemon env to activate)
+
+[doctor] Dependencies
+  multica CLI: 0.3.4 ✓ (required: >= 0.3.4)
+  python3: 3.11.2 ✓
+  jq: not found ✗ (model routing will use defaults)
+  git: 2.39.0 ✓
+
+[doctor] Claude Code Hooks
+  Stop hook: registered ✓ → /path/hooks/stop.sh
+  PreToolUse hook: registered ✓ → /path/hooks/pre-tool.sh
+  SessionStart hook: registered ✓ → /path/hooks/session-start.sh
+
+[doctor] Conflict Detection
+  OMC Stop hook: detected — coexistence OK
+  OMC SessionStart hook: detected — will pollute context in non-multica sessions
+  GSD context-monitor: detected — overlaps with multica context budget rules
+  Recommendation: ensure MULTICA_ISSUE_ID or MULTICA_AGENT_SESSION=1 is set
+    in daemon env so multica hooks only fire in daemon sessions
+
+[doctor] Recent Hook Errors
+  None (.multica/logs/hook-errors.log)
+
+[doctor] Smoke Test
+  Run: bash tests/smoke/run-claude.sh
+  Last result: unknown (not yet run)
+```
+
+**P1 — 文档修复（旅程 A 问题）**
+
+- QUICKSTART.md：
+  - 加 multica CLI 安装链接
+  - 每个前置条件加用途说明（git：learnings 跨机器同步；python3：staleness 检测 + thresholds）
+  - 加 Daemon 部署一节（`MULTICA_AGENT_SESSION=1` 怎么配）
+  - install.sh 打印"hooks registered to: <path>"
+  - 明确说明"smoke 通过 ≠ daemon 集成正确，用 doctor.sh 验证"
+- README：加版本兼容表（multica >= X.Y.Z, Claude Code >= Y.Z）
+- KNOWN-LIMITATIONS.md：加"与其他 Claude Code 插件共存"说明
+
+**P1 — loop-complete 可见反馈**
+
+stop.sh DONE 路径的 [loop-complete] comment 改为包含：
+```
+[loop-complete] All stories verified at iteration N.
+Knowledge: committed M learnings, pruned P Working Memory entries.
+```
+
+**P2 — AGENTS.md 加 skill 使用限制**
+
+在 Must NOT Have 里加：
+```
+Do NOT invoke OMC skills (/ralph, /autopilot, /team) or
+Superpowers skills (/brainstorming) — they require interactive
+input (AskUserQuestion) which is disabled in daemon mode.
+```
+
+### 新增文件
+
+| 文件 | 内容 |
+|------|------|
+| `tools/doctor.sh` | 环境诊断：deps、hooks、冲突检测、recent errors |
+
+### 修改文件
+
+| 文件 | 修改内容 |
+|------|---------|
+| `hooks/stop.sh` | 顶部加双重 guard + loop-complete 可见反馈 |
+| `hooks/pre-tool.sh` | 顶部加双重 guard |
+| `hooks/session-start.sh` | 顶部加双重 guard（输出空 JSON 而非 exit 0）|
+| `docs/QUICKSTART.md` | 安装链接 + 依赖用途 + daemon 部署 + doctor.sh |
+| `README.md` | 版本兼容表 |
+| `AGENTS.md` | skill 使用限制 |
+| `KNOWN-LIMITATIONS.md` | 共存说明 |
+| `install.sh` | 打印 hooks 注册路径 |
+

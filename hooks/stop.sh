@@ -13,6 +13,11 @@ if [[ "$_is_multica" == "false" ]]; then
   exit 0
 fi
 
+# Autopilot run-only: no loop.json, no checkpoint comments needed
+if [[ -n "${MULTICA_AUTOPILOT_RUN_ID:-}" ]] && [[ -z "${MULTICA_ISSUE_ID:-}" ]]; then
+  exit 0
+fi
+
 die() { echo "[stop.sh] ERROR: $*" >&2; exit 1; }
 
 atomic_write() {

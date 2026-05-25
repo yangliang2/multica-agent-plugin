@@ -1,50 +1,92 @@
 {
-  "version": "0.5.0",
-  "task": "multica-agent-plugin v0.5.0 product decisions implementation",
+  "version": "0.7.0",
+  "task": "multica-agent-plugin v0.7.0 deep Multica integration + reliability",
   "stories": [
     {
-      "id": "T1-T3",
-      "title": "capabilities thresholds + session-start extensions + hitl-protocol updates",
+      "id": "C1",
+      "title": "metadata deep integration: read/write at key lifecycle points",
       "priority": 1,
       "passes": false,
       "acceptanceCriteria": [
-        "capabilities/claude-code.json contains thresholds object with hitl_timeout_hours=24, hitl_strike_limit=3, context_checkpoint_pct=35, context_blocked_pct=25, loop_max_iterations=50",
-        "hooks/session-start.sh reads thresholds and exports MULTICA_HITL_TIMEOUT_HOURS, MULTICA_HITL_STRIKE_LIMIT, MULTICA_CONTEXT_CHECKPOINT_PCT, MULTICA_CONTEXT_BLOCKED_PCT, MULTICA_LOOP_MAX_ITERATIONS",
-        "hooks/session-start.sh detects .multica/state/consolidation-prompt.txt, injects as first context_part with '## Memory Consolidation Task' header, then deletes the file",
-        "hooks/session-start.sh detects HITL timeout via hitl-bounces.json last_at field, injects [HITL:timeout] context when > MULTICA_HITL_TIMEOUT_HOURS hours",
-        "skills/core/hitl-protocol.md contains HITL timeout auto-degradation rule referencing $MULTICA_HITL_TIMEOUT_HOURS",
-        "skills/core/hitl-protocol.md HITL comment format includes phase= field: '[HITL] phase=<current_phase> question_id=<uuid>'",
-        "bash -n hooks/session-start.sh passes",
-        "shellcheck hooks/session-start.sh reports no error-level findings"
+        "skills/core/hitl-protocol.md instructs agent to write blocked_reason metadata on HITL blocked: multica issue metadata set <id> --key blocked_reason --value '[HITL:question_id=<uuid>] <question>'",
+        "skills/core/hitl-protocol.md instructs agent to read blocked_reason from metadata in discover phase to resume context",
+        "skills/core/multica-workflow.md Phase 1 (discover) instructs agent to read metadata first: multica issue metadata list <id> --output json",
+        "skills/core/multica-workflow.md Phase 5 (report) instructs agent to clear blocked_reason metadata on successful completion",
+        "hooks/session-start.sh reads .multica/state/<issue_id>/cached-metadata.json if present and injects as '## Issue Metadata' context",
+        "stop.sh DONE path writes loop iteration to metadata: multica issue metadata set <id> --key loop_progress --value 'complete:iteration=N'",
+        "All new multica CLI calls use <<cli:*>> anchors in skill files"
       ]
     },
     {
-      "id": "T4-T5",
-      "title": "multica-workflow + persistence-loop skill updates",
+      "id": "C2",
+      "title": "autopilot context awareness in session-start + skills",
       "priority": 2,
       "passes": false,
       "acceptanceCriteria": [
-        "skills/core/multica-workflow.md phase transition comments include [phase] prefix format example: '[phase] discover→plan'",
-        "skills/core/multica-workflow.md context budget section references $MULTICA_CONTEXT_CHECKPOINT_PCT and $MULTICA_CONTEXT_BLOCKED_PCT instead of hardcoded 35/25",
-        "skills/advanced/persistence-loop.md max_iterations references $MULTICA_LOOP_MAX_ITERATIONS instead of hardcoded 50"
+        "hooks/session-start.sh detects MULTICA_AUTOPILOT_RUN_ID env var (set by daemon for autopilot sessions)",
+        "When autopilot run detected: session-start injects '## Autopilot Mode' context: no issue comment, no issue status, stdout is result",
+        "skills/core/multica-workflow.md has a note: 'In autopilot run-only mode (MULTICA_AUTOPILOT_RUN_ID set), skip issue comment/status calls; output result to stdout only'",
+        "stop.sh detects autopilot mode (no MULTICA_ISSUE_ID, MULTICA_AUTOPILOT_RUN_ID set) and skips loop.json check, checkpoint comments, git commit — exits 0 cleanly",
+        "bash -n hooks/session-start.sh passes",
+        "bash -n hooks/stop.sh passes"
       ]
     },
     {
-      "id": "T6-T7-T8",
-      "title": "docs updates + VERSION bump",
+      "id": "C3",
+      "title": "squad leader capacity probe in squad-leader-workflow.md",
       "priority": 3,
       "passes": false,
       "acceptanceCriteria": [
-        "KNOWN-LIMITATIONS.md contains prominent warning about git repository requirement for learnings sync",
-        "CLAUDE.md Hooks Registration section contains note about paths resolved at install time",
-        "VERSION contains 0.5.0",
-        "CHANGELOG.md contains [0.5.0] entry with v0.5.0 features"
+        "skills/core/squad-leader-workflow.md capacity edge case section instructs leader to check member load before Strategy A delegation",
+        "Instruction: run 'multica issue list --assignee-id <member-uuid> --status in_progress --output json' and count results",
+        "If count >= $MULTICA_LOOP_MAX_ITERATIONS (default 6 per agent): pick different member or use Strategy B (@mention serial)",
+        "If all members at capacity: post [HITL:human] asking operator to increase capacity or wait",
+        "Decision matrix updated to include capacity check as first step"
       ]
     },
     {
-      "id": "T9-SMOKE",
-      "title": "smoke regression: all 50 tests pass",
+      "id": "A1",
+      "title": "blocked restart protection in session-start.sh",
       "priority": 4,
+      "passes": false,
+      "acceptanceCriteria": [
+        "hooks/session-start.sh checks: if MULTICA_ISSUE_ID set AND .multica/state/<id>/hitl-bounces.json exists with unanswered HITL (last_at within MULTICA_HITL_TIMEOUT_HOURS)",
+        "When unanswered HITL detected: prepend strong warning to context_parts: '[HITL:pending] question_id=<uuid> — this issue is blocked waiting for human reply. Do NOT proceed with new work. Check issue comments for the human reply first.'",
+        "If no human reply found in metadata/comments: agent should re-post the HITL question and set blocked again",
+        "bash -n hooks/session-start.sh passes"
+      ]
+    },
+    {
+      "id": "A2",
+      "title": "tools/loop-status.sh: human-readable task progress",
+      "priority": 5,
+      "passes": false,
+      "acceptanceCriteria": [
+        "tools/loop-status.sh exists and is executable",
+        "Script reads .multica/state/<MULTICA_ISSUE_ID>/loop.json and prints: issue ID, iteration/max, phase, story completion (N/total with checkmarks), HITL pending status, last checkpoint time",
+        "When no loop.json: prints 'No active loop for issue <id>'",
+        "When MULTICA_ISSUE_ID not set: prints usage and lists available issue state dirs",
+        "bash -n tools/loop-status.sh passes",
+        "shellcheck tools/loop-status.sh no errors"
+      ]
+    },
+    {
+      "id": "DOCS",
+      "title": "docs: cli-reference.md new anchors + CHANGELOG + VERSION",
+      "priority": 6,
+      "passes": false,
+      "acceptanceCriteria": [
+        "docs/cli-reference.md contains <<cli:issue.metadata.list>>, <<cli:issue.metadata.set>>, <<cli:issue.metadata.delete>> anchors",
+        "docs/cli-reference.md contains <<cli:autopilot.get>> anchor",
+        "docs/cli-reference.lock updated to match",
+        "VERSION contains 0.7.0",
+        "CHANGELOG.md contains [0.7.0] entry"
+      ]
+    },
+    {
+      "id": "SMOKE",
+      "title": "smoke: all 50+ tests pass",
+      "priority": 7,
       "passes": false,
       "acceptanceCriteria": [
         "bash tests/smoke/run-claude.sh exits 0 with FAIL: 0"

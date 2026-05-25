@@ -59,6 +59,12 @@ Rules for the template:
 
 CLI call: `<<cli:issue.comment.add>>`
 
+After posting [HITL] comment and setting blocked, pin the question to metadata:
+`<<cli:issue.metadata.set>>` --key blocked_reason --value "[HITL:question_id=<uuid>] <one-line question summary>"
+
+This allows the next agent session to immediately read the blocking reason from metadata
+without scanning comment history.
+
 ---
 
 ## Blocked Status Machine
@@ -91,6 +97,10 @@ agent process restarted by daemon
         │
         ▼
 Phase 1 discover: fetch issue + comments
+        │
+        ▼
+On resume after blocked: first read <<cli:issue.metadata.list>> — if blocked_reason is set,
+that is the prior HITL question. Find the human reply in comments before proceeding.
         │
         ▼
 locate [HITL] comment by question_id, read human reply

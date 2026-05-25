@@ -12,7 +12,9 @@ This skill governs the full lifecycle of a Multica agent task from assignment to
 1. Fetch issue details: `<<cli:issue.get>>`
 2. Fetch full comment history: `<<cli:issue.comment.list>>`
 3. Check metadata for prior run context via `<<cli:issue.metadata.set>>`
-4. Identify task, completed work, and missing pieces
+4. Read issue metadata for prior agent context: `<<cli:issue.metadata.list>>`
+   Key fields to look for: blocked_reason (prior HITL), pr_url, pipeline_status, waiting_on
+5. Identify task, completed work, and missing pieces
 
 **Exit condition:** Requirements are understood with no blocking unknowns.
 
@@ -91,7 +93,8 @@ This skill governs the full lifecycle of a Multica agent task from assignment to
 **Actions (success path):**
 1. Write final summary: what was done, artifacts, caveats
    `<<cli:issue.comment.add>>`
-2. Set status to `done`: `<<cli:issue.status>>`
+2. Clear stale metadata: if blocked_reason was set, delete it: `<<cli:issue.metadata.delete>>` --key blocked_reason
+3. Set status to `done`: `<<cli:issue.status>>`
 
 **Actions (blocked path):**
 1. Write `[HITL]` comment (see `skills/core/hitl-protocol.md`)
@@ -143,6 +146,17 @@ This skill governs the full lifecycle of a Multica agent task from assignment to
 | ≤$MULTICA_CONTEXT_BLOCKED_PCT% | Checkpoint + set status `blocked` with reason "context-budget-critical" |
 
 Checkpoint format: `[checkpoint] Completed: <done>. Remaining: <left>. Context: <N>% remaining.`
+
+---
+
+## Autopilot Run-Only Mode
+
+When `$MULTICA_AUTOPILOT_RUN_ID` is set and `$MULTICA_ISSUE_ID` is empty,
+this is an autopilot run-only task:
+- Skip all `multica issue *` calls (get, comment, status)
+- Write result directly to stdout — the platform captures it
+- Persistence loop and HITL protocols do not apply
+- Use `multica autopilot get $MULTICA_AUTOPILOT_RUN_ID` for configuration
 
 ---
 

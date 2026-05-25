@@ -100,26 +100,44 @@
   "hotPaths": [
     {
       "path": "hooks/session-start.sh",
-      "accessCount": 28,
-      "lastAccessed": 1779723556418,
+      "accessCount": 32,
+      "lastAccessed": 1779727949911,
       "type": "file"
     },
     {
       "path": "hooks/stop.sh",
-      "accessCount": 28,
-      "lastAccessed": 1779723685203,
-      "type": "file"
-    },
-    {
-      "path": "README.md",
-      "accessCount": 16,
-      "lastAccessed": 1779723661028,
+      "accessCount": 30,
+      "lastAccessed": 1779727933196,
       "type": "file"
     },
     {
       "path": "skills/core/multica-workflow.md",
-      "accessCount": 15,
-      "lastAccessed": 1779634297467,
+      "accessCount": 21,
+      "lastAccessed": 1779727962049,
+      "type": "file"
+    },
+    {
+      "path": "README.md",
+      "accessCount": 19,
+      "lastAccessed": 1779724781065,
+      "type": "file"
+    },
+    {
+      "path": "skills/core/hitl-protocol.md",
+      "accessCount": 12,
+      "lastAccessed": 1779727941604,
+      "type": "file"
+    },
+    {
+      "path": "skills/core/squad-leader-workflow.md",
+      "accessCount": 12,
+      "lastAccessed": 1779728035283,
+      "type": "file"
+    },
+    {
+      "path": "CHANGELOG.md",
+      "accessCount": 11,
+      "lastAccessed": 1779729181613,
       "type": "file"
     },
     {
@@ -132,12 +150,6 @@
       "path": "KNOWN-LIMITATIONS.md",
       "accessCount": 9,
       "lastAccessed": 1779634146033,
-      "type": "file"
-    },
-    {
-      "path": "skills/core/hitl-protocol.md",
-      "accessCount": 9,
-      "lastAccessed": 1779634276000,
       "type": "file"
     },
     {
@@ -156,12 +168,6 @@
       "path": "tools/curate-memory.sh",
       "accessCount": 7,
       "lastAccessed": 1779627758564,
-      "type": "file"
-    },
-    {
-      "path": "CHANGELOG.md",
-      "accessCount": 7,
-      "lastAccessed": 1779633683761,
       "type": "file"
     },
     {
@@ -207,6 +213,12 @@
       "type": "file"
     },
     {
+      "path": "docs/cli-reference.md",
+      "accessCount": 4,
+      "lastAccessed": 1779727897175,
+      "type": "file"
+    },
+    {
       "path": "hooks/hooks.json",
       "accessCount": 3,
       "lastAccessed": 1779627727792,
@@ -228,12 +240,6 @@
       "path": "skills/core/systematic-debug.md",
       "accessCount": 2,
       "lastAccessed": 1779627720896,
-      "type": "file"
-    },
-    {
-      "path": "skills/core/squad-leader-workflow.md",
-      "accessCount": 2,
-      "lastAccessed": 1779627721906,
       "type": "file"
     },
     {
@@ -267,15 +273,15 @@
       "type": "file"
     },
     {
-      "path": "docs/cli-reference.md",
-      "accessCount": 2,
-      "lastAccessed": 1779631130365,
-      "type": "file"
-    },
-    {
       "path": "docs/abi/cli-outward.md",
       "accessCount": 2,
       "lastAccessed": 1779631130894,
+      "type": "file"
+    },
+    {
+      "path": "docs/cli-reference.lock",
+      "accessCount": 2,
+      "lastAccessed": 1779727911053,
       "type": "file"
     },
     {
@@ -306,6 +312,12 @@
       "path": "tools/doctor.sh",
       "accessCount": 1,
       "lastAccessed": 1779723587705,
+      "type": "file"
+    },
+    {
+      "path": "tools/loop-status.sh",
+      "accessCount": 1,
+      "lastAccessed": 1779727971337,
       "type": "file"
     }
   ],

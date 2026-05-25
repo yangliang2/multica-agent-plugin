@@ -20,11 +20,32 @@ Never implement code, write files, or run tests. Delegate every unit of work to 
 2. Extract each member: name, role, mention link `[@Name](mention://agent/<uuid>)`.
 3. All delegation must use these parsed mention links exactly.
 
-If `## Squad Roster` is absent or empty, see Section 6 (Empty Roster).
+If `## Squad Roster` is absent or empty, see Section 7 (Empty Roster).
 
 ---
 
-## 3. Delegation Strategies
+## 3. Step 0: Capacity Check (before delegation)
+
+Before choosing Strategy A or B, check member load:
+
+For each candidate member:
+```
+<<cli:issue.list>> --assignee-id <member-uuid> --status in_progress --output json
+```
+Count the results. If count >= 6 (default `$MULTICA_LOOP_MAX_ITERATIONS` per agent):
+- That member is at capacity — skip them for Strategy A
+- Try another member, or fall back to Strategy B (@mention, serial)
+- If ALL members at capacity: post `[HITL:human]` asking operator to wait or add capacity
+
+| Member load | Decision |
+|-------------|---------|
+| < 6 in_progress | Can accept Strategy A child issue |
+| ≥ 6 in_progress | Skip for Strategy A; try Strategy B or another member |
+| All members full | `[HITL:human]` — cannot delegate now |
+
+---
+
+## 4. Delegation Strategies
 
 ### Strategy A — Child Issue (True Parallel, Preferred)
 
@@ -55,7 +76,7 @@ A single turn may use A for some tasks and B for others, but never both for the 
 
 ---
 
-## 4. Concurrent Edge Cases
+## 5. Concurrent Edge Cases
 
 ### Member at Capacity (≥ 6 in_progress tasks)
 
@@ -80,7 +101,7 @@ A single turn may use A for some tasks and B for others, but never both for the 
 
 ---
 
-## 5. Mandatory `squad.activity` Call
+## 6. Mandatory `squad.activity` Call
 
 Every turn **must** end with:
 
@@ -104,7 +125,7 @@ ${MULTICA_WORKDIR}/.multica/state/<issue-id>/squad-activity.marker
 
 ---
 
-## 6. HITL — Leader Needs Human Input
+## 7. HITL — Leader Needs Human Input
 
 When the leader cannot proceed without a human decision:
 
@@ -122,7 +143,7 @@ Exit. Do not continue delegation until a human replies.
 
 ---
 
-## 7. Receiving Member HITL Escalations
+## 8. Receiving Member HITL Escalations
 
 When a member posts a `[HITL:leader]` comment:
 
@@ -149,7 +170,7 @@ If the same `question_id` appears three or more times across all comments:
 
 ---
 
-## 8. Daemon-Safe Operating Rules
+## 9. Daemon-Safe Operating Rules
 
 - Never call `AskUserQuestion`. The leader runs headless.
 - `no_action` turns: call `<<cli:squad.activity>> outcome=no_action`, write the marker, exit. No comment.
@@ -158,7 +179,7 @@ If the same `question_id` appears three or more times across all comments:
 
 ---
 
-## 9. Turn Checklist
+## 10. Turn Checklist
 
 - [ ] All delegatable tasks delegated via the correct strategy (A or B).
 - [ ] No double-fire: no task dispatched via both A and B.

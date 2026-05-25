@@ -31,6 +31,19 @@ json_escape() {
 context_parts=()
 
 # ---------------------------------------------------------------------------
+# Section 0: Autopilot run-only mode detection
+# ---------------------------------------------------------------------------
+if [[ -n "${MULTICA_AUTOPILOT_RUN_ID:-}" ]] && [[ -z "${MULTICA_ISSUE_ID:-}" ]]; then
+  # Autopilot run-only: no issue context, output is captured as run result
+  context_parts+=("## Autopilot Mode"$'\n'"Autopilot run ID: ${MULTICA_AUTOPILOT_RUN_ID}
+This is a run-only autopilot task. Rules:
+- Do NOT call multica issue get/comment/status — there is no issue
+- Write your result to stdout only; the platform captures it automatically
+- Use multica autopilot get ${MULTICA_AUTOPILOT_RUN_ID} --output json if you need configuration
+- Persistence loop (loop.json) and HITL protocols do not apply in this mode")
+fi
+
+# ---------------------------------------------------------------------------
 # 1. Priority Context section from notepad (≤500 chars)
 # ---------------------------------------------------------------------------
 
@@ -206,6 +219,36 @@ if [[ -f "$claude_md" ]] && grep -qF "$SQUAD_PROTOCOL_MARKER" "$claude_md"; then
   fi
 
   context_parts+=("## Squad Context"$'\n'"$squad_part")
+fi
+
+# HITL pending guard: warn if issue is blocked with unanswered HITL
+if [[ -n "${MULTICA_ISSUE_ID:-}" ]]; then
+  _bounces="${MULTICA_WORKDIR}/.multica/state/${MULTICA_ISSUE_ID}/hitl-bounces.json"
+  if [[ -f "$_bounces" ]]; then
+    _pending=$(python3 -c "
+import json, sys
+from datetime import datetime, timezone
+data = json.load(open(sys.argv[1]))
+timeout_h = float(sys.argv[2])
+pending = []
+for qid, v in data.items():
+    ts = v.get('last_at', '')
+    tier = v.get('tier', 'leader')
+    if ts:
+        dt = datetime.fromisoformat(ts.replace('Z', '+00:00'))
+        hours = (datetime.now(timezone.utc) - dt).total_seconds() / 3600
+        if hours < timeout_h:
+            pending.append(f'{qid}:{tier}')
+print(','.join(pending))
+" "$_bounces" "${MULTICA_HITL_TIMEOUT_HOURS:-24}" 2>/dev/null || echo "")
+    if [[ -n "$_pending" ]]; then
+      context_parts=("## ⚠️ HITL Pending — Read Before Acting"$'\n'"This issue has unanswered HITL questions: ${_pending}.
+BEFORE doing any new work:
+1. Run <<cli:issue.comment.list>> to find the human reply
+2. If reply found: proceed with the answer, clear blocked_reason metadata
+3. If no reply yet: re-post the HITL question and set blocked again — do NOT proceed" "${context_parts[@]}")
+    fi
+  fi
 fi
 
 _caps_file="${MULTICA_PLUGIN_ROOT:-$(dirname "${BASH_SOURCE[0]}")/..}/capabilities/claude-code.json"

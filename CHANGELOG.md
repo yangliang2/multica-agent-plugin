@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.7.0] - 2026-05-26
+
+### Added
+- **Metadata deep integration** — agents now read `blocked_reason` from issue
+  metadata on resume, pin it on HITL blocked, and clear it on completion;
+  Phase 1 (discover) reads metadata first for faster context recovery
+- **Autopilot run-only awareness** — session-start detects `MULTICA_AUTOPILOT_RUN_ID`
+  and injects Autopilot Mode context (no issue calls, stdout-only output);
+  stop.sh exits cleanly without loop.json checks in autopilot sessions
+- **Squad leader capacity probe** — before Strategy A delegation, leader checks
+  member in_progress count; skips members at capacity (≥6); escalates to
+  `[HITL:human]` when all members full
+- **Blocked restart protection** — session-start detects unanswered HITL in
+  `hitl-bounces.json` and prepends strong warning before agent does any work
+- **`tools/loop-status.sh`** — one-command task progress viewer: iteration,
+  phase, per-story pass/fail with progress bar, HITL pending status
+- **New CLI anchors**: `<<cli:issue.metadata.list>>`, `<<cli:issue.metadata.set>>`,
+  `<<cli:issue.metadata.delete>>`, `<<cli:autopilot.get>>`
+
+---
+
 ## [0.6.0] - 2026-05-25
 
 ### Added

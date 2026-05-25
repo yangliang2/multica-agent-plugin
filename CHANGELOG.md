@@ -1,5 +1,31 @@
 # Changelog
 
+## [0.6.0] - 2026-05-25
+
+### Added
+- **Plugin isolation guards** — all hooks check `MULTICA_ISSUE_ID` or
+  `MULTICA_AGENT_SESSION=1` before activating; `DISABLE_MULTICA_PLUGIN=1`
+  disables entirely; resolves conflicts with OMC/GSD/Superpowers when running
+  local Claude Code sessions alongside Multica daemon
+- **`tools/doctor.sh`** — one-command diagnostics: deps, env vars, hook
+  registration, conflict detection with other plugins, recent hook errors
+- **Squad Mode Walkthrough** in `docs/HUMAN-GUIDE.md` — 7-step guide covering
+  prerequisites, member installation requirement, parallel execution explanation,
+  HITL two-tier routing, and leader summarization lifecycle
+- **Compatibility table** in README (multica >= 0.3.4, python3 >= 3.8, git 2.x)
+- **Daemon deployment section** in QUICKSTART with `MULTICA_AGENT_SESSION` and
+  OMC/GSD coexistence instructions (`MULTICA_AGENT_SESSION=0` in local shell)
+- **Docs split**: `USAGE.md` → `QUICKSTART.md` + `HUMAN-GUIDE.md` + `AGENT-CONTRACT.md`
+
+### Changed
+- `stop.sh`: `loop-complete` comment includes learnings count for visibility
+- `AGENTS.md`: added prohibition on invoking OMC/Superpowers interactive skills
+  (AskUserQuestion is disabled in daemon mode)
+- QUICKSTART.md: prerequisites table with purpose/install columns, multica
+  install link, smoke test caveat (does not verify daemon integration)
+
+---
+
 ## [0.5.0] - 2026-05-24
 
 ### Added

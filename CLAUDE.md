@@ -14,23 +14,23 @@ AGENTS.md is the source of truth; this file adds Claude Code-specific affordance
 
 ## Hooks Registration
 
-Hooks are registered by merging `hooks/hooks.json` into your project's `.claude/settings.json`:
+Hooks are installed to `~/.claude/hooks/multica/` by the installer and registered
+in `~/.claude/settings.json`. Run the installer to set up:
 
-```json
-{
-  "hooks": {
-    "Stop": [{"type": "command", "command": "${MULTICA_PLUGIN_ROOT}/hooks/stop.sh"}],
-    "PreToolUse": [{"type": "command", "command": "${MULTICA_PLUGIN_ROOT}/hooks/pre-tool.sh"}],
-    "SessionStart": [{"type": "command", "command": "${MULTICA_PLUGIN_ROOT}/hooks/session-start.sh", "matcher": "startup|clear|compact"}]
-  }
-}
+```bash
+npx multica-agent-plugin
 ```
 
-Set `MULTICA_PLUGIN_ROOT` to the absolute path of this plugin directory before starting Claude Code.
+The installer registers these hooks:
 
-> **Note:** Hook paths in `settings.json` are resolved to **absolute paths at
-> install time** by `install.sh`. If you relocate the plugin directory, run
-> `bash install.sh` again to update the registered paths.
+| Event | Script |
+|-------|--------|
+| Stop | `~/.claude/hooks/multica/stop.sh` |
+| PreToolUse | `~/.claude/hooks/multica/pre-tool.sh` |
+| SessionStart | `~/.claude/hooks/multica/session-start.sh` |
+
+> Hooks are installed to a stable location (`~/.claude/hooks/multica/`) that does
+> not change if you move or update the plugin directory.
 
 ---
 

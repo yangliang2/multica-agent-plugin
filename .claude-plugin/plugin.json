@@ -1,0 +1,23 @@
+{
+  "name": "multica-agent-plugin",
+  "version": "0.8.0",
+  "description": "Claude Code agent plugin for the Multica ecosystem",
+  "author": {
+    "name": "yangliang2"
+  },
+  "repository": "https://github.com/yangliang2/multica-agent-plugin",
+  "homepage": "https://github.com/yangliang2/multica-agent-plugin",
+  "license": "MIT",
+  "keywords": ["multica", "claude-code", "plugin", "verification", "squad", "hitl"],
+  "skills": [
+    "./skills/core/multica-workflow.md",
+    "./skills/core/hitl-protocol.md",
+    "./skills/core/verification.md",
+    "./skills/core/systematic-debug.md",
+    "./skills/core/squad-leader-workflow.md",
+    "./skills/core/squad-member-workflow.md",
+    "./skills/advanced/persistence-loop.md",
+    "./skills/advanced/parallel-exec.md",
+    "./skills/advanced/subagent-dispatch.md"
+  ]
+}

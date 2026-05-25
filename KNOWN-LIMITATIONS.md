@@ -1,5 +1,16 @@
 # Known Limitations
 
+## Node.js Requirement for npx Installer
+
+`npx multica-agent-plugin` requires **Node.js >= 16**. On systems with an older
+Node.js version, use the fallback:
+
+```bash
+git clone https://github.com/yangliang2/multica-agent-plugin.git
+cd multica-agent-plugin
+bash install.sh
+```
+
 ## MVP Scope: Claude Code Only
 
 This release targets the Claude Code harness exclusively. The Stop hook

@@ -47,14 +47,27 @@ multica-agent-plugin/
 
 ## Installation
 
-See [docs/USAGE.md](docs/USAGE.md) for complete installation and setup instructions.
-
-For quick setup, clone and symlink manually:
+**Option A — npm (recommended):**
 
 ```bash
-git clone https://github.com/yangliang2/multica-agent-plugin.git
-# Wire into your Claude Code config per your harness setup
+npx multica-agent-plugin
 ```
+
+**Option B — Claude Code plugin marketplace:**
+
+```
+/plugin marketplace add https://github.com/yangliang2/multica-agent-plugin
+```
+
+Then run `npx multica-agent-plugin` to register hooks.
+
+**Verify:**
+
+```bash
+npx multica-agent-plugin --verify
+```
+
+See [docs/QUICKSTART.md](docs/QUICKSTART.md) for full setup instructions.
 
 ## Compatibility
 

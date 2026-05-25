@@ -1,0 +1,23 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "multica-agent-plugin",
+  "description": "Claude Code plugin for Multica ecosystem agents — verification Iron Law, PRD story tracking, Squad coordination, knowledge management, HITL protocol",
+  "owner": {
+    "name": "yangliang2"
+  },
+  "plugins": [
+    {
+      "name": "multica-agent-plugin",
+      "description": "Enables Claude Code agents running inside the Multica daemon to handle issues reliably: verification before claiming done, structured HITL, Squad leader/member coordination, cross-session knowledge management.",
+      "version": "0.8.0",
+      "author": {
+        "name": "yangliang2"
+      },
+      "source": "./",
+      "category": "productivity",
+      "homepage": "https://github.com/yangliang2/multica-agent-plugin",
+      "tags": ["multica", "verification", "squad", "hitl", "knowledge-management"]
+    }
+  ],
+  "version": "0.8.0"
+}

@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.8.0] - 2026-05-26
+
+### Added
+- **npm package distribution** — `npx multica-agent-plugin` installs hooks and
+  configures environment automatically; no manual shell profile editing required
+- **Claude Code plugin marketplace** — `/plugin marketplace add <url>` installs
+  skills via Claude Code's native plugin system
+- **Stable hook paths** — hooks installed to `~/.claude/hooks/multica/` (decoupled
+  from plugin directory); moving the plugin no longer breaks hooks
+- **`--verify` flag** — `npx multica-agent-plugin --verify` checks deps, hook
+  registration, and settings.json status
+- **`--uninstall` flag** — clean removal of hooks and settings.json entries
+- **`.claude-plugin/plugin.json`** and **`.claude-plugin/marketplace.json`** manifests
+
+### Changed
+- `install.sh` deprecated in favor of `npx multica-agent-plugin`
+- `hooks/hooks.json` updated to reference `~/.claude/hooks/multica/` stable paths
+- `MULTICA_PLUGIN_ROOT` no longer required to be set manually (installer handles it)
+
+---
+
 ## [0.7.0] - 2026-05-26
 
 ### Added

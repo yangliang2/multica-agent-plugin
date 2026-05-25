@@ -1,4 +1,7 @@
 #!/usr/bin/env bash
+echo "⚠️  install.sh is deprecated. Use: npx multica-agent-plugin"
+echo "   Or: node bin/install.js"
+echo "   Continuing with legacy install..."
 # Install multica-agent-plugin into Claude Code.
 #
 # Steps:

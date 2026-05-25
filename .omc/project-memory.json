@@ -118,8 +118,14 @@
     },
     {
       "path": "README.md",
-      "accessCount": 19,
-      "lastAccessed": 1779724781065,
+      "accessCount": 21,
+      "lastAccessed": 1779731598988,
+      "type": "file"
+    },
+    {
+      "path": "CHANGELOG.md",
+      "accessCount": 13,
+      "lastAccessed": 1779731664416,
       "type": "file"
     },
     {
@@ -135,9 +141,15 @@
       "type": "file"
     },
     {
-      "path": "CHANGELOG.md",
+      "path": "docs/QUICKSTART.md",
       "accessCount": 11,
-      "lastAccessed": 1779729181613,
+      "lastAccessed": 1779731588987,
+      "type": "file"
+    },
+    {
+      "path": "KNOWN-LIMITATIONS.md",
+      "accessCount": 11,
+      "lastAccessed": 1779731636879,
       "type": "file"
     },
     {
@@ -147,21 +159,15 @@
       "type": "file"
     },
     {
-      "path": "KNOWN-LIMITATIONS.md",
-      "accessCount": 9,
-      "lastAccessed": 1779634146033,
-      "type": "file"
-    },
-    {
       "path": "docs/USAGE.md",
       "accessCount": 8,
       "lastAccessed": 1779636500655,
       "type": "file"
     },
     {
-      "path": "docs/QUICKSTART.md",
+      "path": "VERSION",
       "accessCount": 8,
-      "lastAccessed": 1779723631588,
+      "lastAccessed": 1779731671597,
       "type": "file"
     },
     {
@@ -177,9 +183,15 @@
       "type": "file"
     },
     {
+      "path": "install.sh",
+      "accessCount": 7,
+      "lastAccessed": 1779731606069,
+      "type": "file"
+    },
+    {
       "path": "CLAUDE.md",
-      "accessCount": 6,
-      "lastAccessed": 1779633659236,
+      "accessCount": 7,
+      "lastAccessed": 1779731648653,
       "type": "file"
     },
     {
@@ -195,9 +207,9 @@
       "type": "file"
     },
     {
-      "path": "install.sh",
-      "accessCount": 5,
-      "lastAccessed": 1779627728132,
+      "path": "docs/HUMAN-GUIDE.md",
+      "accessCount": 6,
+      "lastAccessed": 1779731629033,
       "type": "file"
     },
     {
@@ -207,9 +219,9 @@
       "type": "file"
     },
     {
-      "path": "VERSION",
+      "path": "hooks/hooks.json",
       "accessCount": 5,
-      "lastAccessed": 1779633673569,
+      "lastAccessed": 1779731593873,
       "type": "file"
     },
     {
@@ -219,15 +231,9 @@
       "type": "file"
     },
     {
-      "path": "hooks/hooks.json",
+      "path": "docs/AGENT-CONTRACT.md",
       "accessCount": 3,
-      "lastAccessed": 1779627727792,
-      "type": "file"
-    },
-    {
-      "path": "docs/HUMAN-GUIDE.md",
-      "accessCount": 3,
-      "lastAccessed": 1779723653389,
+      "lastAccessed": 1779731658498,
       "type": "file"
     },
     {
@@ -303,12 +309,6 @@
       "type": "file"
     },
     {
-      "path": "docs/AGENT-CONTRACT.md",
-      "accessCount": 1,
-      "lastAccessed": 1779636410711,
-      "type": "file"
-    },
-    {
       "path": "tools/doctor.sh",
       "accessCount": 1,
       "lastAccessed": 1779723587705,
@@ -318,6 +318,30 @@
       "path": "tools/loop-status.sh",
       "accessCount": 1,
       "lastAccessed": 1779727971337,
+      "type": "file"
+    },
+    {
+      "path": "bin/install.js",
+      "accessCount": 1,
+      "lastAccessed": 1779731579780,
+      "type": "file"
+    },
+    {
+      "path": "package.json",
+      "accessCount": 1,
+      "lastAccessed": 1779731583853,
+      "type": "file"
+    },
+    {
+      "path": ".claude-plugin/plugin.json",
+      "accessCount": 1,
+      "lastAccessed": 1779731587706,
+      "type": "file"
+    },
+    {
+      "path": ".claude-plugin/marketplace.json",
+      "accessCount": 1,
+      "lastAccessed": 1779731592456,
       "type": "file"
     }
   ],

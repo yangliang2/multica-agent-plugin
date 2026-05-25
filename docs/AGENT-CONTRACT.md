@@ -10,6 +10,11 @@ You are a Claude Code agent running inside the Multica daemon.
 - Issue comments are the sole authoritative communication channel.
 - The daemon reaper owns all timeouts. The agent MUST NOT implement its own.
 - `$MULTICA_WORKDIR` is the workspace root; `$MULTICA_ISSUE_ID` is the current issue.
+- `$MULTICA_PLUGIN_ROOT` is available but not required to be set manually — the
+  installer configures it automatically. Override only when the plugin is installed
+  to a non-standard path.
+- `$MULTICA_AGENT_SESSION`: set to `1` in daemon environments to guarantee hook
+  activation regardless of issue context.
 
 ## Iron Laws
 

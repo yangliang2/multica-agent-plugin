@@ -1,95 +1,79 @@
 {
-  "version": "0.7.0",
-  "task": "multica-agent-plugin v0.7.0 deep Multica integration + reliability",
+  "version": "0.8.0",
+  "task": "multica-agent-plugin v0.8.0 npm package + Claude Code plugin marketplace",
   "stories": [
     {
-      "id": "C1",
-      "title": "metadata deep integration: read/write at key lifecycle points",
+      "id": "T1",
+      "title": "bin/install.js: Node.js installer",
       "priority": 1,
       "passes": false,
       "acceptanceCriteria": [
-        "skills/core/hitl-protocol.md instructs agent to write blocked_reason metadata on HITL blocked: multica issue metadata set <id> --key blocked_reason --value '[HITL:question_id=<uuid>] <question>'",
-        "skills/core/hitl-protocol.md instructs agent to read blocked_reason from metadata in discover phase to resume context",
-        "skills/core/multica-workflow.md Phase 1 (discover) instructs agent to read metadata first: multica issue metadata list <id> --output json",
-        "skills/core/multica-workflow.md Phase 5 (report) instructs agent to clear blocked_reason metadata on successful completion",
-        "hooks/session-start.sh reads .multica/state/<issue_id>/cached-metadata.json if present and injects as '## Issue Metadata' context",
-        "stop.sh DONE path writes loop iteration to metadata: multica issue metadata set <id> --key loop_progress --value 'complete:iteration=N'",
-        "All new multica CLI calls use <<cli:*>> anchors in skill files"
+        "bin/install.js exists and is executable (chmod +x)",
+        "Running 'node bin/install.js' detects multica CLI, python3, git, jq and prints status",
+        "Copies hooks/*.sh to ~/.claude/hooks/multica/ with correct permissions",
+        "Merges hook commands into ~/.claude/settings.json idempotently (JSONC compatible)",
+        "Hook commands in settings.json reference ~/.claude/hooks/multica/<script>.sh (stable path)",
+        "Writes MULTICA_PLUGIN_ROOT to shell profile (~/.zshrc or ~/.bashrc) if not already set",
+        "Detects shell type from $SHELL env var (zsh/bash/fish)",
+        "Prints clear feedback: '[install] hooks registered to: ~/.claude/settings.json'",
+        "'node bin/install.js --verify' checks hooks registered + multica CLI version",
+        "'node bin/install.js --uninstall' removes hooks from settings.json and ~/.claude/hooks/multica/",
+        "Idempotent: running twice produces same result without duplicate entries"
       ]
     },
     {
-      "id": "C2",
-      "title": "autopilot context awareness in session-start + skills",
+      "id": "T2",
+      "title": "package.json + .claude-plugin/ manifest files",
       "priority": 2,
       "passes": false,
       "acceptanceCriteria": [
-        "hooks/session-start.sh detects MULTICA_AUTOPILOT_RUN_ID env var (set by daemon for autopilot sessions)",
-        "When autopilot run detected: session-start injects '## Autopilot Mode' context: no issue comment, no issue status, stdout is result",
-        "skills/core/multica-workflow.md has a note: 'In autopilot run-only mode (MULTICA_AUTOPILOT_RUN_ID set), skip issue comment/status calls; output result to stdout only'",
-        "stop.sh detects autopilot mode (no MULTICA_ISSUE_ID, MULTICA_AUTOPILOT_RUN_ID set) and skips loop.json check, checkpoint comments, git commit — exits 0 cleanly",
-        "bash -n hooks/session-start.sh passes",
-        "bash -n hooks/stop.sh passes"
+        "package.json exists with name=multica-agent-plugin, bin.multica-agent-plugin=bin/install.js",
+        "package.json files array includes: bin, hooks, skills, capabilities, docs, tools, .claude-plugin, VERSION, README.md",
+        ".claude-plugin/plugin.json exists with skills array listing skills/core/ and skills/advanced/",
+        ".claude-plugin/marketplace.json exists with $schema, name, description, plugins array",
+        "jq -e . .claude-plugin/plugin.json passes (valid JSON)",
+        "jq -e . .claude-plugin/marketplace.json passes (valid JSON)"
       ]
     },
     {
-      "id": "C3",
-      "title": "squad leader capacity probe in squad-leader-workflow.md",
+      "id": "T3",
+      "title": "hooks/*.sh updated: use ~/.claude/hooks/multica/ stable path",
       "priority": 3,
       "passes": false,
       "acceptanceCriteria": [
-        "skills/core/squad-leader-workflow.md capacity edge case section instructs leader to check member load before Strategy A delegation",
-        "Instruction: run 'multica issue list --assignee-id <member-uuid> --status in_progress --output json' and count results",
-        "If count >= $MULTICA_LOOP_MAX_ITERATIONS (default 6 per agent): pick different member or use Strategy B (@mention serial)",
-        "If all members at capacity: post [HITL:human] asking operator to increase capacity or wait",
-        "Decision matrix updated to include capacity check as first step"
+        "hooks/hooks.json updated: hook commands reference ~/.claude/hooks/multica/*.sh instead of ${MULTICA_PLUGIN_ROOT}/hooks/*.sh",
+        "install.sh updated with deprecation notice pointing to npx multica-agent-plugin",
+        "uninstall.sh updated to remove ~/.claude/hooks/multica/ and clean settings.json entries"
       ]
     },
     {
-      "id": "A1",
-      "title": "blocked restart protection in session-start.sh",
+      "id": "T4",
+      "title": "docs: full update across all affected files",
       "priority": 4,
       "passes": false,
       "acceptanceCriteria": [
-        "hooks/session-start.sh checks: if MULTICA_ISSUE_ID set AND .multica/state/<id>/hitl-bounces.json exists with unanswered HITL (last_at within MULTICA_HITL_TIMEOUT_HOURS)",
-        "When unanswered HITL detected: prepend strong warning to context_parts: '[HITL:pending] question_id=<uuid> — this issue is blocked waiting for human reply. Do NOT proceed with new work. Check issue comments for the human reply first.'",
-        "If no human reply found in metadata/comments: agent should re-post the HITL question and set blocked again",
-        "bash -n hooks/session-start.sh passes"
-      ]
-    },
-    {
-      "id": "A2",
-      "title": "tools/loop-status.sh: human-readable task progress",
-      "priority": 5,
-      "passes": false,
-      "acceptanceCriteria": [
-        "tools/loop-status.sh exists and is executable",
-        "Script reads .multica/state/<MULTICA_ISSUE_ID>/loop.json and prints: issue ID, iteration/max, phase, story completion (N/total with checkmarks), HITL pending status, last checkpoint time",
-        "When no loop.json: prints 'No active loop for issue <id>'",
-        "When MULTICA_ISSUE_ID not set: prints usage and lists available issue state dirs",
-        "bash -n tools/loop-status.sh passes",
-        "shellcheck tools/loop-status.sh no errors"
-      ]
-    },
-    {
-      "id": "DOCS",
-      "title": "docs: cli-reference.md new anchors + CHANGELOG + VERSION",
-      "priority": 6,
-      "passes": false,
-      "acceptanceCriteria": [
-        "docs/cli-reference.md contains <<cli:issue.metadata.list>>, <<cli:issue.metadata.set>>, <<cli:issue.metadata.delete>> anchors",
-        "docs/cli-reference.md contains <<cli:autopilot.get>> anchor",
-        "docs/cli-reference.lock updated to match",
-        "VERSION contains 0.7.0",
-        "CHANGELOG.md contains [0.7.0] entry"
+        "docs/QUICKSTART.md: installation section shows 'npx multica-agent-plugin' as primary method",
+        "docs/QUICKSTART.md: no mention of manual 'export MULTICA_PLUGIN_ROOT' as required step",
+        "docs/QUICKSTART.md: Claude Code plugin marketplace install shown: '/plugin marketplace add https://github.com/yangliang2/multica-agent-plugin'",
+        "README.md: installation section updated to npx + plugin marketplace",
+        "docs/HUMAN-GUIDE.md: §1 Setup updated with new install flow",
+        "KNOWN-LIMITATIONS.md: removed manual MULTICA_PLUGIN_ROOT limitation",
+        "CLAUDE.md: Hooks Registration updated (hooks now in ~/.claude/hooks/multica/)",
+        "docs/AGENT-CONTRACT.md: env vars section updated",
+        "CHANGELOG.md contains [0.8.0] entry",
+        "VERSION contains 0.8.0"
       ]
     },
     {
       "id": "SMOKE",
-      "title": "smoke: all 50+ tests pass",
-      "priority": 7,
+      "title": "smoke: all tests pass",
+      "priority": 5,
       "passes": false,
       "acceptanceCriteria": [
-        "bash tests/smoke/run-claude.sh exits 0 with FAIL: 0"
+        "bash tests/smoke/run-claude.sh exits 0 with FAIL: 0",
+        "node bin/install.js --help prints usage without error",
+        "jq -e . .claude-plugin/plugin.json passes",
+        "jq -e . .claude-plugin/marketplace.json passes"
       ]
     }
   ]

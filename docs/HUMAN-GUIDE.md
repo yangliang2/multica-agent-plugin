@@ -18,38 +18,37 @@ Audience: operators, developers, and issue reviewers.
 ### Installation
 
 ```bash
-git clone https://github.com/yangliang2/multica-agent-plugin.git
-cd multica-agent-plugin
-bash install.sh
+npx multica-agent-plugin
 ```
 
-`install.sh` verifies the `multica` CLI is present, merges `hooks/hooks.json` into
-`~/.claude/settings.json` (or `$CLAUDE_SETTINGS_PATH`) using Python's `json` module
-(existing hooks are preserved; duplicates are skipped), and prints a reminder to
-export `MULTICA_PLUGIN_ROOT`.
+The installer verifies the `multica` CLI is present, copies hooks to
+`~/.claude/hooks/multica/`, merges hook registrations into `~/.claude/settings.json`
+(existing hooks are preserved; duplicates are skipped), and writes
+`MULTICA_PLUGIN_ROOT` to your shell profile automatically.
 
-### MULTICA_PLUGIN_ROOT
-
-Add to your shell profile after installation:
+To verify the installation:
 
 ```bash
-export MULTICA_PLUGIN_ROOT="/absolute/path/to/multica-agent-plugin"
+npx multica-agent-plugin --verify
 ```
 
-Without this variable the hooks cannot locate skills or model routing configuration.
+`MULTICA_PLUGIN_ROOT` is managed by the installer and does not need to be exported
+manually. You may set it explicitly to override the default (e.g. in daemon
+environments with a non-standard install path).
 
 ### Hooks Registered
 
-`install.sh` adds three entries to `~/.claude/settings.json`:
+The installer adds three entries to `~/.claude/settings.json` pointing to stable
+paths under `~/.claude/hooks/multica/`:
 
 | Event | Script | Notes |
 |-------|--------|-------|
-| `Stop` | `hooks/stop.sh` | Completion gate, learnings git-commit, Working Memory prune |
-| `PreToolUse` | `hooks/pre-tool.sh` | Safe-exec proxy for destructive CLI calls |
-| `SessionStart` | `hooks/session-start.sh` | Context injection; fires on `startup\|clear\|compact` |
+| `Stop` | `~/.claude/hooks/multica/stop.sh` | Completion gate, learnings git-commit, Working Memory prune |
+| `PreToolUse` | `~/.claude/hooks/multica/pre-tool.sh` | Safe-exec proxy for destructive CLI calls |
+| `SessionStart` | `~/.claude/hooks/multica/session-start.sh` | Context injection; fires on `startup\|clear\|compact` |
 
-If you relocate the plugin directory, run `bash install.sh` again to update the
-registered paths (they are written as absolute paths at install time).
+Hooks are installed to `~/.claude/hooks/multica/`, which is decoupled from the
+plugin directory. Moving or updating the plugin does not break registered hooks.
 
 ### .multica/ Directory
 
@@ -237,8 +236,8 @@ Who can fix this: **operator** (re-enqueue) or **reviewer** (reply to [HITL])
 **3. Squad activity not recorded — audit warning present.**
 The squad leader ended its turn without calling `multica squad activity`. `stop.sh`
 called `multica squad activity <id> failed` automatically.
-Fix: check whether `MULTICA_PLUGIN_ROOT` is set and the `SessionStart` hook fires.
-Re-enqueue the issue if the session terminated abnormally.
+Fix: check whether the `SessionStart` hook fires (run `npx multica-agent-plugin --verify`
+to confirm hook registration). Re-enqueue the issue if the session terminated abnormally.
 Who can fix this: **operator**
 
 **4. Learnings disappeared after moving to a new machine.**

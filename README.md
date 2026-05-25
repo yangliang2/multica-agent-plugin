@@ -8,36 +8,15 @@ Multica is an AI-native task management platform (think Linear, but with AI agen
 
 ## Features
 
-### v0.1.0 — MVP
-- **Verification Iron Law** (`skills/core/verification.md`) — agents must verify before claiming done; 3-attempt minimum before escalating
-- **PRD story tracking** (`skills/advanced/persistence-loop.md`) — session-state-driven PRD loop with completion signal protocol and deslop pass
-- **HITL blocked protocol** (`skills/core/hitl-protocol.md`) — structured human-in-the-loop escalation with blocked/unblocked state machine
-- **Stop hook** (`hooks/stop.sh`) — completion signal protocol; posts checkpoint comments on session end
-- **Pre-tool hook** (`hooks/pre-tool.sh`) — safe-exec proxy for destructive CLI calls
-- **Session-start hook** (`hooks/session-start.sh`) — loads notepad Priority Context and recent learnings into session context
-- **CLI ABI** (`docs/cli-reference.md`) — locked multica CLI reference with SHA-256 integrity check
+- **Verification Iron Law** — agents must verify with evidence before claiming done
+- **PRD story tracking** — session-persistent loop with `<promise>DONE</promise>` completion signal
+- **HITL protocol** — structured human-in-the-loop via `blocked` + comment, no interactive prompts
+- **Squad coordination** — leader/member workflows, two-tier HITL routing, mandatory squad activity
+- **Subagent dispatch** — model routing (haiku/sonnet/opus), fresh context principle
+- **Knowledge management** — learnings dedup, staleness detection, cross-machine git sync
+- **Plugin isolation** — hooks only activate in Multica daemon sessions; coexists with OMC/GSD
 
-### v0.2.0 — Squad Support
-- **Squad leader workflow** (`skills/core/squad-leader-workflow.md`) — coordinate-don't-execute pattern, two delegation strategies (child issue parallel vs @mention serial), mandatory squad activity, HITL reply no-mention rule, 3-strike escalation
-- **Squad member workflow** (`skills/core/squad-member-workflow.md`) — two-tier HITL ([HITL:leader] preferred, [HITL:human] as fallback), independent 3-strike counter, no @mention on completion to prevent double-fire
-- **Squad leader detection** — session-start injects roster when `## Squad Operating Protocol` marker found in CLAUDE.md
-- **Squad activity audit** — stop hook performs passive squad activity check (non-blocking)
-- **CLI anchors** — three new anchors added: `squad.activity`, `issue.create.child`, `issue.comment.list.thread`
-- **Render-anchors drift guard** — `tools/render-anchors.sh` exits 2 on unknown anchor
-
-### v0.3.0 — Subagent Dispatch and Reliability
-- **Subagent dispatch spec** (`skills/advanced/subagent-dispatch.md`) — model routing table (haiku/sonnet/opus), fresh context principle (complete prompt, no history references), Task() examples, output contract
-- **Model routing env vars** — session-start injects `MULTICA_MODEL_FAST/STD/DEEP` from `capabilities/claude-code.json` `model_routing` field
-- **3-strike file storage** — session-start reads `.multica/state/<issue_id>/hitl-bounces.json` and injects bounce count into context (program-enforced, not LLM-discipline)
-- **Direct squad activity call** — stop hook calls `multica squad activity failed` immediately when leader skips squad activity (replaces deferred warning)
-- **Context budget awareness** — multica-workflow skill enforces checkpoint at ≤35% context, blocked at ≤25%
-
-### v0.4.0 — Knowledge Management
-- **Learning dedup** (`tools/curate-memory.sh`) — last-wins dedup by key, confidence decay (>90d: -2, >180d: -4), archive on conf<3, atomic write
-- **Staleness detection** — session-start uses stat-based staleness (marks `[possibly stale]` when source file missing or mtime newer than learning); requires python3
-- **Multi-machine knowledge sync** — stop hook git-commits `.multica/learnings.jsonl` on DONE path for cross-machine knowledge propagation
-- **Memory consolidation** — stop hook writes `consolidation-prompt.txt` for haiku subagent to merge and summarize learnings
-- **Working Memory expiry** — stop hook prunes notepad Working Memory entries older than 7 days
+See [CHANGELOG.md](CHANGELOG.md) for full version history.
 
 ## Architecture
 
@@ -122,4 +101,4 @@ tools/render-anchors.sh --inplace path/to/file.md
 
 ## Version
 
-See [`VERSION`](VERSION). Current version: 0.4.0
+See [`VERSION`](VERSION) · [`CHANGELOG.md`](CHANGELOG.md)

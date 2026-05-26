@@ -1361,3 +1361,106 @@ input (AskUserQuestion) which is disabled in daemon mode.
 6. Member HITL → leader 路由 → human（回复 leader 转发的那条）
 7. 所有子任务完成 → leader 被唤醒汇总 → 父 issue done
 
+
+---
+
+## 旅程 B 摩擦点（Reviewer）
+
+| # | 摩擦点 | 严重程度 | 场景 |
+|---|--------|---------|------|
+| 1 | loop-complete comment 里"learnings"对 reviewer 无解释 | 低 | 完成 |
+| 2 | knowledge 复用对 reviewer 不透明（agent 不问时 reviewer 不知道为什么）| 中 | 后续 issue |
+| 3 | 过时 learning 被使用无任何可见信号 | 高 | 出错 |
+| 4 | [HITL:timeout] 自动降级后 reviewer 看到 comment 但不知道是自动选的 | 中 | 超时 |
+| 5 | Squad 的 [HITL:leader] comment reviewer 会困惑（发给谁的？）| 低 | Squad |
+
+**核心发现**：reviewer 的信任 = HITL 体验好 + knowledge 可见。
+HITL 流程体验良好（[phase] 前缀让 reviewer 快速扫读），但 knowledge 系统对 reviewer 完全黑盒。
+
+---
+
+## v0.9.0 Roadmap — Reviewer 信任 + Knowledge 可见性
+
+### 背景
+
+旅程 B 研究发现：reviewer 最大问题不是操作摩擦，而是**信任缺失**——
+当 agent 不发 HITL 时，reviewer 不知道 agent 在用什么信息做决策。
+
+### 交付内容
+
+**P0 — loop-complete comment 加 learning 摘要**
+
+stop.sh DONE 路径的 [loop-complete] comment 改为：
+```
+[loop-complete] Done at iteration N. Knowledge: M learnings recorded.
+New this run: "key1", "key2"
+(Review or correct via multica issue metadata list <id>)
+```
+实现：stop.sh 在 git commit learnings 前，读取本轮新增的 learning key（通过 git diff 对比），
+写入 loop-complete comment。
+
+**P0 — [HITL:timeout] comment 格式明确**
+
+当前格式让 reviewer 不知道这是自动降级：
+改为：
+```
+[HITL:timeout] Auto-degraded after Nh without reply.
+Chose conservative option: <option description>
+If incorrect, reply to this comment to override.
+```
+修改位置：hitl-protocol.md 的 HITL Timeout Auto-Degradation 规范。
+
+**P1 — agent 使用历史 learning 时在 plan comment 里注明**
+
+multica-workflow.md Phase 2（plan）加规范：
+当 agent 因历史 learning 做了某个关键决策，必须在 plan comment 里注明：
+```
+[phase] discover→plan — Using prior learning "use-alipay" (confidence:9).
+Override: reply if this assumption is incorrect before execution starts.
+```
+让 reviewer 有机会在执行前纠正。
+
+**P1 — [HITL:leader] comment 加明确角色说明**
+
+当前 reviewer 看到 [HITL:leader] 不知道这是发给 leader 的还是发给自己的。
+改为在 comment 开头加：
+```
+[HITL:leader] ← This is routed to the squad leader, not to you.
+If leader cannot resolve, you will receive a separate [HITL:human] notification.
+```
+
+**P2 — tools/learning-review.sh**
+
+让 reviewer 可以查看当前项目积累的 learning：
+```bash
+MULTICA_WORKDIR=/path bash tools/learning-review.sh
+
+Active learnings (12 total):
+  conf:9  use-alipay          "use Alipay for CN payments" [constraint]
+  conf:8  test-sandbox-mode   "tests require sandbox credentials" [constraint]
+  conf:7  api-rate-limit      "payment API rate limit: 100/min" [observation]
+  ...
+
+Possibly stale (source files changed):
+  conf:5  stripe-key-format   "Stripe key format changed" [fix]  ← file modified
+```
+
+**P2 — [possibly stale] learning 在 session-start 注入时通知 reviewer**
+
+当 session-start 检测到 stale learning 并注入时，同时在 issue comment 里写一条：
+```
+[knowledge-warning] Prior learning "stripe-key-format" may be stale 
+(source file modified). Agent will proceed with caution.
+```
+这样 reviewer 在 issue timeline 里就能看到 agent 的知识状态。
+
+### 新增/修改文件
+
+| 文件 | 修改内容 |
+|------|---------|
+| `hooks/stop.sh` | loop-complete comment 加本轮新增 learning key 摘要 |
+| `skills/core/hitl-protocol.md` | [HITL:timeout] comment 格式更明确；[HITL:leader] 加角色说明 |
+| `skills/core/multica-workflow.md` | Phase 2 plan comment 加 learning 引用规范 |
+| `tools/learning-review.sh` | 新建：reviewer 查看 learning 的可读摘要工具 |
+| `hooks/session-start.sh` | stale learning 时写 issue comment 通知 |
+

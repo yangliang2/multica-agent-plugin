@@ -6,7 +6,7 @@ if [[ "${DISABLE_MULTICA_PLUGIN:-0}" == "1" ]]; then
   exit 0
 fi
 _is_multica=false
-if [[ -n "${MULTICA_ISSUE_ID:-}" ]] || [[ "${MULTICA_AGENT_SESSION:-1}" == "1" ]]; then
+if [[ -n "${MULTICA_ISSUE_ID:-}" ]] || [[ "${MULTICA_AGENT_SESSION:-0}" == "1" ]]; then
   _is_multica=true
 fi
 if [[ "$_is_multica" == "false" ]]; then
@@ -18,6 +18,11 @@ MULTICA_WORKDIR="${MULTICA_WORKDIR:-$(pwd)}"
 NOTEPAD="${MULTICA_WORKDIR}/.multica/notepad.md"
 LEARNINGS="${MULTICA_WORKDIR}/.multica/learnings.jsonl"
 HOOK_LOG="${MULTICA_WORKDIR}/.multica/logs/hook-errors.log"
+
+log_error() {
+  mkdir -p "$(dirname "$HOOK_LOG")"
+  echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] [session-start.sh] $*" >> "$HOOK_LOG" 2>/dev/null || true
+}
 
 json_escape() {
   local s="$1"

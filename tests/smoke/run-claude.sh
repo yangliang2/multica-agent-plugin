@@ -176,7 +176,7 @@ This is the priority context for smoke testing.
 Permanent note here.
 NOTEPAD
 
-output=$(MULTICA_WORKDIR="$TMPDIR_SESSION" bash "${PLUGIN_ROOT}/hooks/session-start.sh" 2>/dev/null)
+output=$(MULTICA_AGENT_SESSION=1 MULTICA_WORKDIR="$TMPDIR_SESSION" bash "${PLUGIN_ROOT}/hooks/session-start.sh" 2>/dev/null)
 
 # Validate it is parseable JSON (use python3 if available, else basic check)
 if command -v python3 >/dev/null 2>&1; then
@@ -262,7 +262,7 @@ Members:
 - Worker1 — agent — `[@Worker1](mention://agent/bbbbbbbb-0000-0000-0000-000000000002)`
 EOF
 
-output_s5=$(MULTICA_WORKDIR="$tmpdir_s5" bash "${PLUGIN_ROOT}/hooks/session-start.sh" 2>/dev/null)
+output_s5=$(MULTICA_AGENT_SESSION=1 MULTICA_WORKDIR="$tmpdir_s5" bash "${PLUGIN_ROOT}/hooks/session-start.sh" 2>/dev/null)
 
 if printf '%s' "$output_s5" | grep -q "Squad Role: LEADER"; then
   pass "session-start detects squad leader role"
@@ -443,7 +443,7 @@ cat > "$tmpdir_s9/.multica/learnings.jsonl" << EOF
 {"ts":"2026-01-01T00:00:00Z","key":"fresh-learning","insight":"no files referenced","confidence":7,"files":[]}
 EOF
 
-output=$(MULTICA_WORKDIR="$tmpdir_s9" bash "${PLUGIN_ROOT}/hooks/session-start.sh" 2>/dev/null)
+output=$(MULTICA_AGENT_SESSION=1 MULTICA_WORKDIR="$tmpdir_s9" bash "${PLUGIN_ROOT}/hooks/session-start.sh" 2>/dev/null)
 
 if echo "$output" | grep -q "possibly stale"; then
   pass "session-start marks missing-file learning as stale"

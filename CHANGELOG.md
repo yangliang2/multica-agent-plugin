@@ -1,5 +1,48 @@
 # Changelog
 
+## [1.1.0] - 2026-05-27
+
+### Fixed (P0 — "Take-back trust" sprint)
+
+- **C1 — `hooks/pre-tool.sh`**: hook input now read from stdin JSON (Claude Code
+  PreToolUse contract) instead of `CLAUDE_TOOL_NAME`/`CLAUDE_TOOL_INPUT` env vars
+  which Claude Code never sets. Deny list now actually executes. Fallback to env
+  vars retained for test harness compatibility.
+
+- **C2 — `hooks/session-start.sh`**: `log_error` function now defined locally in
+  session-start.sh. Previously only defined in stop.sh; under `set -euo pipefail`
+  any stale-learning warning path would abort the hook before emitting JSON output.
+
+- **H6 — `hooks/stop.sh`**: JSON field extraction and story-completion check
+  replaced with `python3 json.load` (robust to compact/spaced JSON and escaped
+  strings). Previous `awk -F'"'` parser and `grep -qF '"passes": false'` (space-
+  sensitive) silently failed on compact JSON like `"passes":false`.
+
+- **H1 — All hooks**: `MULTICA_AGENT_SESSION` default changed from `1` to `0`.
+  Previous default meant hooks activated in every Claude Code session, contradicting
+  the README claim "only activates in Multica daemon sessions". Daemon must now
+  explicitly set `MULTICA_AGENT_SESSION=1` (which it does via env config).
+
+- **H8 — `.claude-plugin/marketplace.json`**: version bumped to 1.1.0 to match
+  package.json. Was stuck at 0.8.0, so marketplace installs got stale plugin.
+
+### Changed
+
+- **`hooks/stop.sh`**: `loop.json` update on DONE path now uses `python3` for
+  atomic JSON round-trip (preserves all fields, avoids sed regex fragility).
+
+- **`tests/smoke/run-claude.sh`**: added `MULTICA_AGENT_SESSION=1` to all
+  session-start.sh invocations (Scenarios 3, 5, 9) — required after H1 fix.
+
+- **`tests/smoke/test-session-start-log-error.sh`**: removed stale XFAIL markers
+  now that C2 is fixed; added stale-learning-in-context assertion.
+
+### Tests
+
+- All 5 smoke test files pass (50/50 scenarios, 0 XFAIL).
+
+---
+
 ## [1.0.0] - 2026-05-26
 
 ### Added

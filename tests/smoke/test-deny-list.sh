@@ -1,11 +1,6 @@
 #!/usr/bin/env bash
-# test-deny-list.sh — verify deny list blocks destructive commands
-#
-# EXPECTED STATE: FAILING until C1 is fixed (hook reads CLAUDE_TOOL_NAME/INPUT
-# from env vars which are empty in tests; stdin JSON path not yet implemented).
-# When C1 is fixed (stdin JSON), these tests should pass.
-#
-# The test documents the CORRECT behaviour we expect post-fix.
+# test-deny-list.sh — verify deny list blocks destructive commands via stdin JSON
+# (Claude Code PreToolUse hook contract: data arrives on stdin as JSON)
 set -uo pipefail
 
 PLUGIN_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
@@ -13,10 +8,8 @@ HOOK="${PLUGIN_ROOT}/hooks/pre-tool.sh"
 
 PASS=0
 FAIL=0
-XFAIL=0  # expected failures (C1 not yet fixed)
 pass()  { echo "  PASS: $*";  PASS=$((PASS+1)); }
 fail()  { echo "  FAIL: $*";  FAIL=$((FAIL+1)); }
-xfail() { echo "  XFAIL (C1 pending): $*"; XFAIL=$((XFAIL+1)); }
 
 run_hook_with_stdin() {
   local json="$1"
@@ -26,27 +19,27 @@ run_hook_with_stdin() {
   return $?
 }
 
-# --- Tests that should BLOCK (exit 1) after C1 fix ---
+# --- Tests that should BLOCK (exit 1) ---
 
 DENY_JSON='{"tool_name":"Bash","tool_input":{"command":"rm -rf /"}}'
 if ! run_hook_with_stdin "$DENY_JSON"; then
   pass "rm -rf / blocked"
 else
-  xfail "rm -rf / should be blocked (C1: stdin not read yet)"
+  fail "rm -rf / should be blocked"
 fi
 
 DENY_JSON='{"tool_name":"Bash","tool_input":{"command":"git push --force origin main"}}'
 if ! run_hook_with_stdin "$DENY_JSON"; then
   pass "git push --force blocked"
 else
-  xfail "git push --force should be blocked (C1: stdin not read yet)"
+  fail "git push --force should be blocked"
 fi
 
 DENY_JSON='{"tool_name":"Bash","tool_input":{"command":"git reset --hard HEAD~5"}}'
 if ! run_hook_with_stdin "$DENY_JSON"; then
   pass "git reset --hard blocked"
 else
-  xfail "git reset --hard should be blocked (C1: stdin not read yet)"
+  fail "git reset --hard should be blocked"
 fi
 
 # --- Tests that should ALLOW (exit 0) ---
@@ -65,6 +58,13 @@ else
   fail "ls -la should be allowed"
 fi
 
-echo "  ${PASS} passed, ${FAIL} failed, ${XFAIL} expected-fail (C1 pending)"
-# Only hard-fail on unexpected failures (allow/block logic broken)
+# --- Non-Bash tool should pass through ---
+ALLOW_JSON='{"tool_name":"Read","tool_input":{"file_path":"/etc/passwd"}}'
+if run_hook_with_stdin "$ALLOW_JSON"; then
+  pass "non-Bash tool (Read) allowed"
+else
+  fail "non-Bash tool should be allowed"
+fi
+
+echo "  ${PASS} passed, ${FAIL} failed"
 [[ $FAIL -eq 0 ]]

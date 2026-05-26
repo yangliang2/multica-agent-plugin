@@ -6,7 +6,7 @@ if [[ "${DISABLE_MULTICA_PLUGIN:-0}" == "1" ]]; then
   exit 0
 fi
 _is_multica=false
-if [[ -n "${MULTICA_ISSUE_ID:-}" ]] || [[ "${MULTICA_AGENT_SESSION:-1}" == "1" ]]; then
+if [[ -n "${MULTICA_ISSUE_ID:-}" ]] || [[ "${MULTICA_AGENT_SESSION:-0}" == "1" ]]; then
   _is_multica=true
 fi
 if [[ "$_is_multica" == "false" ]]; then
@@ -43,26 +43,51 @@ post_comment() {
   fi
 }
 
-# Only inspect Bash tool calls
-tool_name="${CLAUDE_TOOL_NAME:-}"
+# Read tool name and input from stdin JSON (Claude Code PreToolUse hook contract).
+# Claude Code passes hook data as JSON on stdin, NOT as environment variables.
+# Fallback to env vars for backward compatibility with test harnesses.
+_hook_input=$(cat)
+
+tool_name=$(printf '%s' "$_hook_input" | python3 -c "
+import json, sys
+try:
+    d = json.load(sys.stdin)
+    print(d.get('tool_name', ''))
+except Exception:
+    pass
+" 2>/dev/null || echo "${CLAUDE_TOOL_NAME:-}")
+
 if [[ "$tool_name" != "Bash" ]]; then
   exit 0
 fi
 
-tool_input="${CLAUDE_TOOL_INPUT:-}"
-if [[ -z "$tool_input" ]]; then
-  exit 0
-fi
+command_str=$(printf '%s' "$_hook_input" | python3 -c "
+import json, sys
+try:
+    d = json.load(sys.stdin)
+    inp = d.get('tool_input', d.get('input', {}))
+    if isinstance(inp, dict):
+        print(inp.get('command', ''))
+    else:
+        print('')
+except Exception:
+    pass
+" 2>/dev/null || echo "")
 
-# Extract command string from JSON tool input (best-effort)
-command_str=$(printf '%s' "$tool_input" | python3 -c "
+# Fallback: if stdin parse gave nothing, try legacy env var path
+if [[ -z "$command_str" ]]; then
+  _legacy_input="${CLAUDE_TOOL_INPUT:-}"
+  if [[ -n "$_legacy_input" ]]; then
+    command_str=$(printf '%s' "$_legacy_input" | python3 -c "
 import json, sys
 try:
     d = json.load(sys.stdin)
     print(d.get('command', ''))
 except Exception:
     pass
-" 2>/dev/null || printf '%s' "$tool_input")
+" 2>/dev/null || echo "")
+  fi
+fi
 
 if [[ -z "$command_str" ]]; then
   exit 0

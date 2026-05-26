@@ -6,7 +6,7 @@ if [[ "${DISABLE_MULTICA_PLUGIN:-0}" == "1" ]]; then
   exit 0
 fi
 _is_multica=false
-if [[ -n "${MULTICA_ISSUE_ID:-}" ]] || [[ "${MULTICA_AGENT_SESSION:-1}" == "1" ]]; then
+if [[ -n "${MULTICA_ISSUE_ID:-}" ]] || [[ "${MULTICA_AGENT_SESSION:-0}" == "1" ]]; then
   _is_multica=true
 fi
 if [[ "$_is_multica" == "false" ]]; then
@@ -32,16 +32,16 @@ atomic_write() {
 json_field() {
   local file="$1"
   local field="$2"
-  awk -F'"' -v k="$field" '
-    $2 == k {
-      if ($3 ~ /[[:space:]]*:[[:space:]]*"/) {
-        print $4
-      } else {
-        gsub(/[[:space:]:,}]/, "", $3)
-        print $3
-      }
-    }
-  ' "$file" | head -1
+  python3 -c "
+import json, sys
+try:
+    d = json.load(open(sys.argv[1]))
+    v = d.get(sys.argv[2])
+    if v is not None:
+        print(str(v).lower() if isinstance(v, bool) else v)
+except Exception:
+    pass
+" "$file" "$field" 2>/dev/null
 }
 
 dedup_hash() {
@@ -132,7 +132,16 @@ squad_leader_audit() {
 if [[ "$done_signal" == "true" ]]; then
   # Cross-check: if loop.json exists, verify no stories are still pending
   if [[ -f "$LOOP_JSON" ]]; then
-    if grep -qF '"passes": false' "$LOOP_JSON" 2>/dev/null; then
+    _has_failing=$(python3 -c "
+import json, sys
+try:
+    d = json.load(open(sys.argv[1]))
+    stories = d.get('stories', [])
+    print('yes' if any(not s.get('passes', False) for s in stories) else 'no')
+except Exception:
+    print('no')
+" "$LOOP_JSON" 2>/dev/null || echo "no")
+    if [[ "$_has_failing" == "yes" ]]; then
       done_signal=false
     fi
   fi
@@ -169,7 +178,13 @@ New this run: ${_new_learning_keys}
     --content "$_loop_complete_msg" \
     2>/dev/null || log_error "failed to post loop-complete comment"
 
-  updated_json=$(cat "$LOOP_JSON" \
+  updated_json=$(python3 -c "
+import json, sys
+d = json.load(open(sys.argv[1]))
+d['active'] = False
+d['phase'] = 'complete'
+print(json.dumps(d))
+" "$LOOP_JSON" 2>/dev/null || cat "$LOOP_JSON" \
     | sed 's/"active":[[:space:]]*true/"active": false/' \
     | sed "s/\"phase\":[[:space:]]*\"[^\"]*\"/\"phase\": \"complete\"/")
   atomic_write "$LOOP_JSON" "$updated_json"

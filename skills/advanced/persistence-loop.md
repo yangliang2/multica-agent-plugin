@@ -111,6 +111,18 @@ c. Only proceed when ALL criteria are met with evidence in hand.
 
 ### Step 5 — Mark Story Complete
 
+**Before** setting `passes: true`, write an evidence file (required by stop hook):
+
+```
+Path: .multica/state/{issue_id}/evidence/{story_id}.txt
+Format:
+  command: <full command run>
+  exit_code: <integer, must be 0>
+  output_hash: <sha256 of full output, first 8 hex chars>
+  summary: <1-3 lines of key output>
+```
+
+Then:
 a. Set `passes: true` for the story in `loop.json`.
 b. Increment `iteration` counter.
 c. Write a learning entry to `.multica/learnings.jsonl` capturing what was learned.

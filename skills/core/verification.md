@@ -18,11 +18,31 @@ BEFORE claiming any status or expressing satisfaction:
 3. READ — Full output, check exit code, count failures
 4. VERIFY — Does output confirm the claim?
    - If NO: State actual status with evidence
-   - If YES: State claim WITH evidence
+   - If YES: Write evidence file (see Evidence File below), then state claim WITH evidence
 5. ONLY THEN — Make the claim
 
 Skip any step = assertion without evidence
 ```
+
+## Evidence File (required before marking any story passes=true)
+
+For each story, write a machine-readable evidence file before setting `passes: true`:
+
+**Path:** `.multica/state/{issue_id}/evidence/{story_id}.txt`
+
+**Format:**
+```
+command: <full command that was run>
+exit_code: <integer>
+output_hash: <sha256 of full output, first 8 hex chars>
+summary: <1-3 lines of key output — test counts, build result, key assertion>
+```
+
+**Rules:**
+- File must exist and be non-empty before `passes: true` is written to `loop.json`
+- `exit_code` must be 0 for a passing claim
+- The stop hook verifies evidence file existence — missing file causes DONE rejection
+- If the story's acceptance criterion is "no tests exist", write `exit_code: 0` with `summary: no-tests-required — <rationale>`
 
 ## Claim-to-Proof Table
 

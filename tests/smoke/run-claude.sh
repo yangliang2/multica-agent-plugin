@@ -130,12 +130,12 @@ fi
 
 # Now set DONE signal and re-run — expect exit 0
 # Update loop.json to have all stories passing (cross-check requirement)
-cat > "$LOOP_JSON" <<'LOOP'
+cat > "$LOOP_JSON" <<LOOP
 {
   "active": true,
   "iteration": 1,
   "max_iterations": 50,
-  "issue_id": "test-issue-smoke",
+  "issue_id": "$ISSUE_ID",
   "phase": "execution",
   "stories": [
     {"id": "S1", "title": "story one", "acceptance": "criterion", "passes": true}
@@ -143,6 +143,15 @@ cat > "$LOOP_JSON" <<'LOOP'
 }
 LOOP
 touch -t 200001010000 "$LOOP_JSON"
+
+# Evidence file required by stop.sh evidence gate
+mkdir -p "${ISSUE_STATE_DIR}/evidence"
+cat > "${ISSUE_STATE_DIR}/evidence/S1.txt" <<'EV'
+command: pytest tests/
+exit_code: 0
+output_hash: abc12345
+summary: 1 passed in 0.12s
+EV
 
 MULTICA_WORKDIR="$TMPDIR_SMOKE" \
 MULTICA_ISSUE_ID="$ISSUE_ID" \
@@ -329,7 +338,7 @@ EOF
 mkdir -p "$tmpdir_s7/.multica/state/test-issue-123"
 
 # Create an active loop.json with all stories passing and old mtime
-cat > "$tmpdir_s7/.multica/state/test-issue-123/loop.json" <<'LOOP'
+cat > "$tmpdir_s7/.multica/state/test-issue-123/loop.json" <<LOOP
 {
   "active": true,
   "iteration": 1,
@@ -342,6 +351,15 @@ cat > "$tmpdir_s7/.multica/state/test-issue-123/loop.json" <<'LOOP'
 }
 LOOP
 touch -t 200001010000 "$tmpdir_s7/.multica/state/test-issue-123/loop.json"
+
+# Evidence file required by stop.sh evidence gate
+mkdir -p "$tmpdir_s7/.multica/state/test-issue-123/evidence"
+cat > "$tmpdir_s7/.multica/state/test-issue-123/evidence/S1.txt" <<'EV'
+command: pytest tests/
+exit_code: 0
+output_hash: abc12345
+summary: 1 passed in 0.12s
+EV
 
 # Trigger DONE branch so stop.sh exits 0 and squad_leader_audit runs;
 # no squad-activity.marker present — audit warning should be written.
@@ -368,7 +386,7 @@ touch "$tmpdir_s7/.multica/state/test-issue-123/squad-activity.marker"
 rm -f "$tmpdir_s7/.multica/state/squad-audit-warning"
 
 # Restore active loop.json with all stories passing for second run
-cat > "$tmpdir_s7/.multica/state/test-issue-123/loop.json" <<'LOOP'
+cat > "$tmpdir_s7/.multica/state/test-issue-123/loop.json" <<LOOP
 {
   "active": true,
   "iteration": 1,
@@ -381,6 +399,15 @@ cat > "$tmpdir_s7/.multica/state/test-issue-123/loop.json" <<'LOOP'
 }
 LOOP
 touch -t 200001010000 "$tmpdir_s7/.multica/state/test-issue-123/loop.json"
+
+# Evidence file required by stop.sh evidence gate
+mkdir -p "$tmpdir_s7/.multica/state/test-issue-123/evidence"
+cat > "$tmpdir_s7/.multica/state/test-issue-123/evidence/S1.txt" <<'EV'
+command: pytest tests/
+exit_code: 0
+output_hash: abc12345
+summary: 1 passed in 0.12s
+EV
 
 MULTICA_WORKDIR="$tmpdir_s7" \
 MULTICA_ISSUE_ID="test-issue-123" \

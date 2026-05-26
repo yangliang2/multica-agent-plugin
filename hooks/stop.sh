@@ -149,6 +149,37 @@ except Exception:
 fi
 
 if [[ "$done_signal" == "true" ]]; then
+  # Evidence gate: every passes=true story must have a non-empty evidence file
+  if [[ -f "$LOOP_JSON" ]]; then
+    _missing_evidence=$(python3 -c "
+import json, sys, os
+from pathlib import Path
+try:
+    d = json.load(open(sys.argv[1]))
+    issue_id = d.get('issue_id', '')
+    workdir = sys.argv[2]
+    missing = []
+    for s in d.get('stories', []):
+        if not s.get('passes', False):
+            continue
+        sid = s.get('id', '')
+        if not sid:
+            continue
+        ev = Path(workdir) / '.multica' / 'state' / issue_id / 'evidence' / f'{sid}.txt'
+        if not ev.exists() or ev.stat().st_size == 0:
+            missing.append(sid)
+    print(','.join(missing))
+except Exception:
+    pass
+" "$LOOP_JSON" "$MULTICA_WORKDIR" 2>/dev/null || echo "")
+    if [[ -n "$_missing_evidence" ]]; then
+      echo "[stop.sh] DONE rejected — missing evidence files for stories: ${_missing_evidence}" >&2
+      done_signal=false
+    fi
+  fi
+fi
+
+if [[ "$done_signal" == "true" ]]; then
   # Count committed learnings if possible
   _learnings_count=0
   _new_learning_keys=""

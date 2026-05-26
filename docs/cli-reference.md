@@ -1,7 +1,7 @@
 # Multica CLI Reference
 
 > Generated: 2026-05-26
-> Source: `multica --help` and subcommand help output (live binary at `/usr/local/bin/multica`)
+> Source: live binary at /usr/local/bin/multica
 
 ---
 
@@ -113,12 +113,12 @@ LEARN MORE
   Use `multica <command> <subcommand> --help` for more information about a command.
 ```
 
+
 **Examples:**
 
 ```bash
 multica issue get MUL-123
 multica issue get MUL-123 --output json
-multica issue get 5fb87ac7-23b5-4a7a-81fa-ed295a54545d
 ```
 
 ---
@@ -169,6 +169,7 @@ LEARN MORE
   Use `multica <command> <subcommand> --help` for more information about a command.
 ```
 
+
 **Examples:**
 
 ```bash
@@ -178,14 +179,11 @@ multica issue comment add MUL-123 --content "Looks good, merging now"
 # Reply to a specific comment
 multica issue comment add MUL-123 --parent <comment-id> --content "Thanks!"
 
-# Multi-line comment from stdin
-echo "Line 1\nLine 2" | multica issue comment add MUL-123 --content-stdin
+# Multi-line from stdin
+printf "Line 1\nLine 2" | multica issue comment add MUL-123 --content-stdin
 
-# Comment from a file
+# From a file
 multica issue comment add MUL-123 --content-file ./report.md
-
-# Comment with attachment
-multica issue comment add MUL-123 --content "See attached" --attachment ./screenshot.png
 ```
 
 ---
@@ -209,126 +207,11 @@ LEARN MORE
   Use `multica <command> <subcommand> --help` for more information about a command.
 ```
 
-**Valid statuses:** `backlog`, `todo`, `in_progress`, `in_review`, `done`, `blocked`, `cancelled`
 
-**Examples:**
+**Valid statuses:** `backlog`, `todo`, `in_progress`, `in_review`, `done`, `blocked`, `cancelled`
 
 ```bash
 multica issue status MUL-123 in_progress
 multica issue status MUL-123 done
-multica issue status MUL-123 blocked --output json
 ```
 
----
-
-## Quick Reference: Issue Workflow
-
-```bash
-# List issues
-multica issue list
-multica issue list --status in_progress --output json
-multica issue list --metadata pipeline_status=waiting_review
-
-# Get issue
-multica issue get <id>
-multica issue get <id> --output json
-
-# Create issue
-multica issue create --title "Fix login bug" --description "..." --priority high --assignee "Lambda"
-
-# Update issue
-multica issue update <id> --title "New title" --priority urgent
-
-# Assign issue
-multica issue assign <id> --to "Lambda"
-multica issue assign <id> --to-id <uuid>
-multica issue assign <id> --unassign
-
-# Change status
-multica issue status <id> in_progress
-
-# List comments (flat)
-multica issue comment list <issue-id>
-
-# List comments (single thread)
-multica issue comment list <issue-id> --thread <comment-id>
-
-# List comments (most recent threads)
-multica issue comment list <issue-id> --recent 20
-
-# Add comment
-multica issue comment add <issue-id> --content "message"
-
-# Reply to comment
-multica issue comment add <issue-id> --parent <comment-id> --content "reply"
-
-# Delete comment
-multica issue comment delete <comment-id>
-
-# Metadata
-multica issue metadata list <issue-id>
-multica issue metadata get <issue-id> --key pipeline_status
-multica issue metadata set <issue-id> --key pipeline_status --value waiting_review
-multica issue metadata delete <issue-id> --key pipeline_status
-```
-
----
-
-## Anchor Index
-
-The following anchors are available for use with `tools/render-anchors.sh`:
-
-| Anchor | Description |
-|--------|-------------|
-| `<<cli:issue.get>>` | `multica issue get <id>` |
-| `<<cli:issue.comment.add>>` | `multica issue comment add <issue-id> --content "..."` |
-| `<<cli:issue.comment.list>>` | `multica issue comment list <issue-id>` |
-| `<<cli:issue.status>>` | `multica issue status <id> <status>` |
-| `<<cli:issue.list>>` | `multica issue list` |
-| `<<cli:issue.create>>` | `multica issue create --title "..." --assignee "..."` |
-| `<<cli:issue.assign>>` | `multica issue assign <id> --to "..."` |
-| `<<cli:issue.metadata.list>>` | `multica issue metadata list <issue-id> --output json` |
-| `<<cli:issue.metadata.set>>` | `multica issue metadata set <issue-id> --key <key> --value <value>` |
-| `<<cli:issue.metadata.delete>>` | `multica issue metadata delete <issue-id> --key <key>` |
-| `<<cli:autopilot.get>>` | `multica autopilot get <autopilot-id> --output json` |
-| `<<cli:squad.activity>>` | `multica squad activity <issue-id> <outcome> --reason "..."` — outcomes: `action`, `no_action`, `failed` |
-| `<<cli:issue.create.child>>` | `multica issue create --title "..." --status todo --assignee-id <uuid>` |
-| `<<cli:issue.comment.list.thread>>` | `multica issue comment list <issue-id> --thread <comment-id> --tail 30 --output json` |
-
----
-
-## multica squad activity
-
-```
-Record a squad leader evaluation on an issue
-
-USAGE
-  multica squad activity <issue-id> <outcome> [flags]
-
-OUTCOME VALUES
-  action     — leader delegated or took action
-  no_action  — leader evaluated and decided no action needed
-  failed     — leader encountered an error
-
-FLAGS
-      --output string   Output format: table or json (default "table")
-      --reason string   Short explanation of the decision
-  -h, --help            help for activity
-
-INHERITED FLAGS
-  --help   Show help for command
-
-DESCRIPTION
-  This command is intended to be called by squad leader agents after each
-  trigger to record their decision in the issue timeline.
-  Must be called at every turn end when running as squad leader.
-  For no_action: call and exit immediately — do NOT post any comment.
-```
-
-**Examples:**
-
-```bash
-multica squad activity MUL-123 action --reason "Delegated to Lambda for implementation"
-multica squad activity MUL-123 no_action --reason "Child issues still in progress, no new work needed"
-multica squad activity MUL-123 failed --reason "Could not resolve member availability"
-```

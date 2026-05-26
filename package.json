@@ -21,7 +21,8 @@
   ],
   "scripts": {
     "install-plugin": "node bin/install.js",
-    "verify": "node bin/install.js --verify"
+    "verify": "node bin/install.js --verify",
+    "test": "bash tests/smoke/run-all.sh"
   },
   "keywords": ["claude-code", "plugin", "multica", "ai-agent", "verification", "squad"],
   "author": "yangliang2",

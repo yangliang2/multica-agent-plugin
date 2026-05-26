@@ -1,0 +1,42 @@
+#!/usr/bin/env bash
+# run-all.sh — unified smoke test runner
+# Usage: bash tests/smoke/run-all.sh
+# Exit:  0 all pass, 1 any fail
+
+set -uo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PASS=0
+FAIL=0
+SKIP=0
+
+run_test() {
+  local name="$1"
+  local script="${SCRIPT_DIR}/$1"
+  if [[ ! -f "$script" ]]; then
+    echo "SKIP: $name (not found)"
+    SKIP=$((SKIP + 1))
+    return
+  fi
+  if bash "$script"; then
+    echo "PASS: $name"
+    PASS=$((PASS + 1))
+  else
+    echo "FAIL: $name"
+    FAIL=$((FAIL + 1))
+  fi
+}
+
+# Existing tests
+run_test "run-claude.sh"
+
+# New targeted tests
+run_test "test-pretool-guard.sh"
+run_test "test-deny-list.sh"
+run_test "test-stop-done-failing-story.sh"
+run_test "test-session-start-log-error.sh"
+
+echo ""
+echo "Results: ${PASS} passed, ${FAIL} failed, ${SKIP} skipped"
+
+[[ $FAIL -eq 0 ]]

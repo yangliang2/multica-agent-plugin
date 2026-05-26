@@ -1,6 +1,6 @@
 # Multica CLI Reference
 
-> Generated: 2026-05-23
+> Generated: 2026-05-26
 > Source: `multica --help` and subcommand help output (live binary at `/usr/local/bin/multica`)
 
 ---
@@ -294,3 +294,41 @@ The following anchors are available for use with `tools/render-anchors.sh`:
 | `<<cli:squad.activity>>` | `multica squad activity <issue-id> <outcome> --reason "..."` — outcomes: `action`, `no_action`, `failed` |
 | `<<cli:issue.create.child>>` | `multica issue create --title "..." --status todo --assignee-id <uuid>` |
 | `<<cli:issue.comment.list.thread>>` | `multica issue comment list <issue-id> --thread <comment-id> --tail 30 --output json` |
+
+---
+
+## multica squad activity
+
+```
+Record a squad leader evaluation on an issue
+
+USAGE
+  multica squad activity <issue-id> <outcome> [flags]
+
+OUTCOME VALUES
+  action     — leader delegated or took action
+  no_action  — leader evaluated and decided no action needed
+  failed     — leader encountered an error
+
+FLAGS
+      --output string   Output format: table or json (default "table")
+      --reason string   Short explanation of the decision
+  -h, --help            help for activity
+
+INHERITED FLAGS
+  --help   Show help for command
+
+DESCRIPTION
+  This command is intended to be called by squad leader agents after each
+  trigger to record their decision in the issue timeline.
+  Must be called at every turn end when running as squad leader.
+  For no_action: call and exit immediately — do NOT post any comment.
+```
+
+**Examples:**
+
+```bash
+multica squad activity MUL-123 action --reason "Delegated to Lambda for implementation"
+multica squad activity MUL-123 no_action --reason "Child issues still in progress, no new work needed"
+multica squad activity MUL-123 failed --reason "Could not resolve member availability"
+```

@@ -1,5 +1,30 @@
 # Changelog
 
+## [1.0.0] - 2026-05-26
+
+### Added
+- **`docs/abi/cli-outward.md`** — expanded from 5 to 12 commands: added `squad.activity`,
+  `issue.create`, `issue.create.child`, `issue.metadata.list`, `issue.metadata.delete`,
+  `autopilot.get`, `issue.comment.list.thread`; each with synopsis, flags, JSON schema,
+  and usage notes; anchor index updated to match
+- **`docs/cli-reference.md`** — added full `multica squad activity` command block
+  with help text, outcome semantics table, and examples
+
+### Changed
+- **`docs/abi/cli-outward.md`** — `issue comment add` usage notes: clarified that
+  `--idempotency-key` does NOT exist in the CLI; client-side dedup hash in comment
+  body is the correct approach; version declaration updated to 1.0.0
+
+### Resolved (source code research)
+- Briefing-to-disk path: daemon writes squad briefing into `{workDir}/CLAUDE.md`
+  via `InjectRuntimeConfig` — plugin's existing CLAUDE.md detection is correct
+- Roster staleness: roster is re-injected on every squad-leader claim — always current
+- Child-issue backlink: daemon auto-notifies parent on child done — leader needs no manual backlink
+- `MULTICA_HARNESS_CAPS`: daemon does not inject this env var — capabilities are
+  static, written at adapter install time only
+
+---
+
 ## [0.9.0] - 2026-05-26
 
 ### Fixed

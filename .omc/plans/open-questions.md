@@ -18,6 +18,10 @@
 - [x] ~~hooks 节流阈值（多久允许一次 checkpoint comment）？~~ → **Decision**: state file mtime 节流 60s + dedup hash 在 comment 模板
 - [x] ~~AGENTS.md 漂移 CI 检测的具体方式（hash diff 还是关键词冲突扫描）？~~ → **Decision**: 双轨：(1) AGENTS.md hash + `docs/cli-reference.lock` diff guard；(2) `tools/check-no-conflict.sh` 扫描 CLAUDE.md/GEMINI.md/capabilities/** 与 AGENTS.md 关键词冲突
 - [x] ~~Kimi-CLI 是否能读取 multica CLI 的环境变量？~~ → **Decision (C2 fix)**: Kimi daemon ACP **不读盘也不必读 env**；AGENTS.md 内容通过 `opts.SystemPrompt` JSON-RPC 字段注入；env 仅用于 launcher 配置
+- [x] ~~`multica safe-exec` 二进制是否随 multica CLI 主包发布？还是需要单独安装？~~ → **Resolved by source code (2026-05-26)**: `multica safe-exec` does NOT exist in the CLI (`server/cmd/multica/` has no such command). `pre-tool.sh` now uses a local `tools/safe-exec.deny.list` instead. `capabilities/claude-code.json` updated: `destructive-guard: "wrapper"`.
+- [x] ~~`multica` CLI の `issue comment` 幂等性细节~~ → **Resolved by source code (2026-05-26)**: `server/internal/handler/issue.go:2007` confirms attachment IDs are idempotent (re-sending same id is a no-op) but there is no `--idempotency-key` flag on `multica issue comment add`. Client-side dedup (dedup hash in comment body) remains the correct approach.
+- [x] ~~`multica squad activity` CLI surface~~ → **Resolved by source code (2026-05-26)**: syntax is `multica squad activity <issue-id> <outcome> [--reason "..."]`; valid outcomes: `action`, `no_action`, `failed` (cmd_squad.go:399). No `log` subcommand exists.
+- [x] ~~Child-issue parent backlink~~ → **Resolved by source code (2026-05-26)**: `server/internal/handler/issue_child_done.go` confirms multica auto-posts a system comment on the parent when a child transitions to done, and auto-triggers the parent leader agent (`triggerChildDoneAgent`/`triggerChildDoneSquad`). Leader does NOT need to manually backlink — daemon handles rollup notification automatically.
 
 ## v0.2.0-squad-aware - 2026-05-23
 

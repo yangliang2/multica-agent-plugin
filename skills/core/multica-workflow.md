@@ -35,6 +35,13 @@ This skill governs the full lifecycle of a Multica agent task from assignment to
 1. Draft a concise implementation plan
 2. Post the plan as a comment: `<<cli:issue.comment.add>>`
    - Format: `[phase] discover→plan — <brief plan summary>`
+   - **If a prior learning influenced a key decision**, cite it in the plan comment:
+     ```
+     [phase] discover→plan — <brief plan summary>
+     Using prior learning "<key>" (confidence:<N>): <one-line rationale>.
+     Override: reply to this comment if this assumption is incorrect before execution starts.
+     ```
+   - Only cite learnings that materially affect the approach (skip incidental ones).
 3. Set status to `in_progress`: `<<cli:issue.status>>`
 
 **Exit condition:** Plan is written to an issue comment; status is `in_progress`.

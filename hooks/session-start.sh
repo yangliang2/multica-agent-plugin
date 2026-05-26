@@ -62,6 +62,7 @@ if [[ -f "$NOTEPAD" ]]; then
   fi
 fi
 
+_stale_keys_arr=()
 if [[ -f "$LEARNINGS" && -s "$LEARNINGS" ]]; then
   recent=$(tail -n 10 "$LEARNINGS")
 
@@ -119,9 +120,19 @@ if files and ts:
 
 prefix = "[possibly stale] " if stale else ""
 print(f"- {prefix}[{key}] (conf:{conf}) {insight}")
+if stale and key:
+    print(f"STALE_KEY:{key}")
 PYEOF
         )
-        [[ -n "$result" ]] && insights="${insights}${result}"$'\n'
+        if [[ -n "$result" ]]; then
+          while IFS= read -r _rline; do
+            if [[ "$_rline" == STALE_KEY:* ]]; then
+              _stale_keys_arr+=("${_rline#STALE_KEY:}")
+            else
+              insights="${insights}${_rline}"$'\n'
+            fi
+          done <<< "$result"
+        fi
       done <<< "$learnings_combined"
     else
       insights=$(printf '%s\n' "$learnings_combined" \
@@ -142,6 +153,15 @@ PYEOF
 
     if [[ -n "$insights" ]]; then
       context_parts+=("## Prior Learnings"$'\n'"$insights")
+    fi
+
+    # Post [knowledge-warning] issue comment for stale learnings so reviewer can see them
+    if [[ ${#_stale_keys_arr[@]} -gt 0 ]] && [[ -n "${MULTICA_ISSUE_ID:-}" ]] && command -v multica >/dev/null 2>&1; then
+      for _sk in "${_stale_keys_arr[@]}"; do
+        multica issue comment add "$MULTICA_ISSUE_ID" \
+          --content "[knowledge-warning] Prior learning \"${_sk}\" may be stale (source file modified). Agent will proceed with caution." \
+          2>/dev/null || log_error "failed to post knowledge-warning for ${_sk}"
+      done
     fi
   fi
 fi

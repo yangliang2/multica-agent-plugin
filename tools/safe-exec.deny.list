@@ -1,0 +1,32 @@
+# safe-exec.deny.list — destructive command patterns blocked by pre-tool.sh
+# Format: one pattern per line. Lines starting with # are comments.
+# Patterns are matched against the Bash tool command string (case-insensitive substring match).
+# Blank lines are ignored.
+
+# Filesystem wipe
+rm -rf /
+rm -rf ~
+rm -rf $HOME
+
+# Force push to protected branches
+git push --force
+git push -f
+
+# Hard reset
+git reset --hard
+
+# Drop database
+drop database
+drop table
+
+# Overwrite disk
+dd if=
+mkfs.
+
+# Kill all processes
+kill -9 -1
+killall -9
+
+# Truncate system files
+> /etc/
+truncate -s 0 /etc/

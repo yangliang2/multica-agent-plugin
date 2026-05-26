@@ -13,23 +13,20 @@ if [[ "$_is_multica" == "false" ]]; then
   exit 0
 fi
 
-# pre-tool.sh — Multica destructive-guard proxy (Claude Code PreToolUse hook)
+# pre-tool.sh — Multica destructive-guard (Claude Code PreToolUse hook)
 #
-# Thin proxy: passes tool arguments to `multica safe-exec` for capability gating.
-# If `multica safe-exec` is unavailable, fails closed with a [capability=missing]
-# comment and exits 1 (blocks the tool call).
+# Checks the Bash tool command against tools/safe-exec.deny.list.
+# Non-Bash tools are allowed through without inspection.
 #
 # Exit codes:
 #   0  — tool call permitted
-#   1  — tool call blocked (capability missing or denied)
-
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
+#   1  — tool call blocked (matched deny pattern)
+#   2  — tool call blocked (Claude Code stop-and-retry signal, not used here)
 
 MULTICA_WORKDIR="${MULTICA_WORKDIR:-$(pwd)}"
+PLUGIN_ROOT="${MULTICA_PLUGIN_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
+DENY_LIST="${PLUGIN_ROOT}/tools/safe-exec.deny.list"
 
-# Locate current issue for comment attribution (best-effort; non-fatal if absent)
 issue_id=""
 if [[ -n "${MULTICA_ISSUE_ID:-}" ]]; then
   issue_id="$MULTICA_ISSUE_ID"
@@ -39,38 +36,50 @@ fi
 
 post_comment() {
   local body="$1"
-  if [[ -n "$issue_id" ]]; then
+  if [[ -n "$issue_id" ]] && command -v multica >/dev/null 2>&1; then
     multica issue comment add "$issue_id" \
       --content "$body" \
       2>/dev/null || true
   fi
 }
 
-# ---------------------------------------------------------------------------
-# Check multica safe-exec availability
-# ---------------------------------------------------------------------------
-
-if ! command -v multica >/dev/null 2>&1; then
-  post_comment "[capability=missing:destructive-guard] multica CLI not found; tool call blocked as fail-closed."
-  exit 1
-fi
-
-if ! multica safe-exec --help >/dev/null 2>&1; then
-  post_comment "[capability=missing:destructive-guard] multica safe-exec subcommand unavailable; tool call blocked as fail-closed."
-  exit 1
-fi
-
-# ---------------------------------------------------------------------------
-# Proxy tool args to multica safe-exec
-# ---------------------------------------------------------------------------
-
-# CLAUDE_TOOL_NAME and CLAUDE_TOOL_INPUT are set by Claude Code for PreToolUse hooks.
-# Pass them through to multica safe-exec for capability evaluation.
-
+# Only inspect Bash tool calls
 tool_name="${CLAUDE_TOOL_NAME:-}"
-tool_input="${CLAUDE_TOOL_INPUT:-}"
+if [[ "$tool_name" != "Bash" ]]; then
+  exit 0
+fi
 
-exec multica safe-exec \
-  --tool-name "$tool_name" \
-  --tool-input "$tool_input" \
-  --issue "${issue_id:-}"
+tool_input="${CLAUDE_TOOL_INPUT:-}"
+if [[ -z "$tool_input" ]]; then
+  exit 0
+fi
+
+# Extract command string from JSON tool input (best-effort)
+command_str=$(printf '%s' "$tool_input" | python3 -c "
+import json, sys
+try:
+    d = json.load(sys.stdin)
+    print(d.get('command', ''))
+except Exception:
+    pass
+" 2>/dev/null || printf '%s' "$tool_input")
+
+if [[ -z "$command_str" ]]; then
+  exit 0
+fi
+
+# Check against deny list
+if [[ -f "$DENY_LIST" ]]; then
+  while IFS= read -r pattern; do
+    # Skip comments and blank lines
+    [[ -z "$pattern" || "$pattern" == \#* ]] && continue
+    if printf '%s' "$command_str" | grep -qiF "$pattern" 2>/dev/null; then
+      post_comment "[destructive-guard] Tool call blocked — matched deny pattern: \`${pattern}\`
+Command: \`${command_str:0:200}\`
+To override, run the command manually outside the daemon."
+      exit 1
+    fi
+  done < "$DENY_LIST"
+fi
+
+exit 0

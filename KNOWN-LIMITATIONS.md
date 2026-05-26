@@ -24,17 +24,26 @@ sequential, unguarded execution.
 
 ## multica CLI Version Requirement
 
-The `hooks/stop.sh` and `hooks/pre-tool.sh` scripts call `multica` CLI commands
-directly. They require **multica >= 0.4.0** for the following subcommands:
+The `hooks/stop.sh` and `hooks/session-start.sh` scripts call `multica` CLI
+commands directly. They require **multica >= 0.4.0** for the following
+subcommands:
 
 - `multica issue comment add`
 - `multica issue comment list`
 - `multica issue status set`
-- `multica safe-exec`
 
 Using an older multica version will cause hook commands to fail silently
 (exit 0 on error, by design) but may produce incorrect loop state or missing
 checkpoint comments.
+
+## Destructive Guard Uses Local Deny List (not multica safe-exec)
+
+`hooks/pre-tool.sh` implements the destructive-guard capability using a local
+pattern file (`tools/safe-exec.deny.list`) rather than a `multica safe-exec`
+subcommand. The `multica safe-exec` subcommand does not exist in the multica
+CLI. The local deny list covers the most common destructive patterns (force
+push, `rm -rf /`, `DROP DATABASE`, etc.). To extend coverage, edit
+`tools/safe-exec.deny.list` directly.
 
 ## Post-MVP Harness Extension Paths
 

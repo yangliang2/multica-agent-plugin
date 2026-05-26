@@ -15,7 +15,7 @@
   },
   "capabilities": {
     "hooks": "native",
-    "destructive-guard": "native",
+    "destructive-guard": "wrapper",
     "parallel": "native",
     "persistent-loop": "native",
     "fs-load-agents-md": "native",

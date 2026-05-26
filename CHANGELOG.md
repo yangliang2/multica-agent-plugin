@@ -1,5 +1,39 @@
 # Changelog
 
+## [0.9.0] - 2026-05-26
+
+### Fixed
+- **`hooks/pre-tool.sh`** — was blocking every tool call in daemon mode because
+  `multica safe-exec` does not exist in the multica CLI; replaced with a local
+  deny-list check against `tools/safe-exec.deny.list` (covers force-push,
+  `rm -rf /`, DROP DATABASE, etc.); non-Bash tools pass through unmodified
+
+### Added
+- **`tools/learning-review.sh`** — reviewer-facing summary of all accumulated
+  learnings: confidence scores, stale status (source file changed), type tags,
+  and archived entries below confidence threshold
+- **Squad HITL Routing section** in `hitl-protocol.md` — defines `[HITL:leader]`
+  comment format with explicit "← This is routed to the squad leader, not to you"
+  prefix so reviewers are never confused about who is expected to act
+
+### Changed
+- **`hooks/stop.sh`** — `[loop-complete]` comment now includes keys of learnings
+  added this run (extracted via `git diff --cached`) and a metadata review hint;
+  git `add` happens before the comment so keys are available at post time
+- **`hooks/session-start.sh`** — when a stale learning is detected and injected,
+  a `[knowledge-warning]` comment is posted to the issue so reviewers can see the
+  agent's knowledge state in the issue timeline
+- **`skills/core/hitl-protocol.md`** — `[HITL:timeout]` comment format now reads
+  "Auto-degraded after Nh without reply. Chose conservative option: <desc>.
+  If incorrect, reply to this comment to override." — clearly marks auto-degradation
+  for reviewers; old format omitted the "auto-degraded" framing
+- **`skills/core/multica-workflow.md`** — Phase 2 plan comment rule: when a prior
+  learning materially influences the approach, agent must cite it inline
+  (`Using prior learning "<key>" (confidence:N): <rationale>. Override: reply if
+  incorrect before execution starts.`) so reviewers can correct before execute
+
+---
+
 ## [0.8.0] - 2026-05-26
 
 ### Added

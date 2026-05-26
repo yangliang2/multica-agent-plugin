@@ -154,8 +154,12 @@ When `$MULTICA_HITL_TIMEOUT_HOURS` hours pass without a human reply to a
 signal. On receiving this signal, the agent MUST:
 
 1. Choose the most conservative available option from the original HITL question
-2. Post a comment: `[HITL:timeout] question_id=<uuid> — waited Nh without reply.
-   Proceeding with conservative option: <brief description of chosen option>`
+2. Post a comment using this exact format:
+   ```
+   [HITL:timeout] Auto-degraded after <N>h without reply.
+   Chose conservative option: <brief description of chosen option>
+   If incorrect, reply to this comment to override.
+   ```
 3. Continue execution with that choice
 4. Do NOT set `blocked` — the timeout resolution allows forward progress
 
@@ -164,3 +168,28 @@ with reason `hitl-timeout-no-safe-default`.
 
 Default timeout: `$MULTICA_HITL_TIMEOUT_HOURS` hours (configurable via
 `capabilities/claude-code.json` thresholds.hitl_timeout_hours).
+
+---
+
+## Squad HITL Routing
+
+When escalating from a squad member, use two-tier routing:
+
+**Tier 1 — escalate to squad leader first:**
+```
+[HITL:leader] ← This is routed to the squad leader, not to you.
+If leader cannot resolve, you will receive a separate [HITL:human] notification.
+
+phase=<current_phase> question_id=<uuid>
+
+**Question:** <one clear, specific question>
+
+**Context:** <2-5 sentences>
+```
+
+**Tier 2 — escalate to human (after 3 leader bounces, or leader unavailable):**
+Use the standard `[HITL]` template from the Comment Template section above.
+
+The `[HITL:leader]` prefix tells reviewers the comment is directed at the squad
+leader and does not require their action yet. Reviewers will receive a separate
+`[HITL:human]` notification if the leader cannot resolve it.

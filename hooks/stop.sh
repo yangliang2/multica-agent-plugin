@@ -141,12 +141,32 @@ fi
 if [[ "$done_signal" == "true" ]]; then
   # Count committed learnings if possible
   _learnings_count=0
-  if [[ -f "${MULTICA_WORKDIR}/.multica/learnings.jsonl" ]]; then
-    _learnings_count=$(wc -l < "${MULTICA_WORKDIR}/.multica/learnings.jsonl" 2>/dev/null || echo 0)
+  _new_learning_keys=""
+  _learnings="${MULTICA_WORKDIR}/.multica/learnings.jsonl"
+  if [[ -f "$_learnings" ]]; then
+    _learnings_count=$(wc -l < "$_learnings" 2>/dev/null || echo 0)
+
+    # Stage learnings now so we can inspect new keys before committing
+    if git -C "$MULTICA_WORKDIR" rev-parse --git-dir >/dev/null 2>&1; then
+      git -C "$MULTICA_WORKDIR" add "$_learnings" 2>/dev/null || true
+      if ! git -C "$MULTICA_WORKDIR" diff --cached --quiet -- "$_learnings" 2>/dev/null; then
+        _new_learning_keys=$(git -C "$MULTICA_WORKDIR" diff --cached -- "$_learnings" 2>/dev/null \
+          | grep '^+' | grep -v '^+++' \
+          | awk -F'"' '/"key"/{print $4}' \
+          | tr '\n' ',' | sed 's/,$//')
+      fi
+    fi
+  fi
+
+  _loop_complete_msg="[loop-complete] Done at iteration ${iteration}. Knowledge: ${_learnings_count} learnings on record."
+  if [[ -n "$_new_learning_keys" ]]; then
+    _loop_complete_msg="${_loop_complete_msg}
+New this run: ${_new_learning_keys}
+(Review or correct via: multica issue metadata list ${issue_id})"
   fi
 
   multica issue comment add "$issue_id" \
-    --content "[loop-complete] All stories verified at iteration ${iteration}. Knowledge: ${_learnings_count} learnings on record." \
+    --content "$_loop_complete_msg" \
     2>/dev/null || log_error "failed to post loop-complete comment"
 
   updated_json=$(cat "$LOOP_JSON" \
@@ -154,10 +174,8 @@ if [[ "$done_signal" == "true" ]]; then
     | sed "s/\"phase\":[[:space:]]*\"[^\"]*\"/\"phase\": \"complete\"/")
   atomic_write "$LOOP_JSON" "$updated_json"
 
-  _learnings="${MULTICA_WORKDIR}/.multica/learnings.jsonl"
   if [[ -f "$_learnings" ]]; then
     if git -C "$MULTICA_WORKDIR" rev-parse --git-dir >/dev/null 2>&1; then
-      git -C "$MULTICA_WORKDIR" add "$_learnings" 2>/dev/null || true
       if ! git -C "$MULTICA_WORKDIR" diff --cached --quiet 2>/dev/null; then
         git -C "$MULTICA_WORKDIR" commit -m "chore(knowledge): update learnings [skip ci]" \
           2>/dev/null || log_error "failed to git commit learnings"

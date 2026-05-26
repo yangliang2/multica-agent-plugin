@@ -27,7 +27,7 @@ echo ""
 echo "--- Environment ---"
 echo "  MULTICA_PLUGIN_ROOT: ${MULTICA_PLUGIN_ROOT:-(not set, using $PLUGIN_ROOT)}"
 echo "  MULTICA_ISSUE_ID: ${MULTICA_ISSUE_ID:-(not set — normal outside daemon)}"
-echo "  MULTICA_AGENT_SESSION: ${MULTICA_AGENT_SESSION:-1 (default)}"
+echo "  MULTICA_AGENT_SESSION: ${MULTICA_AGENT_SESSION:-0 (default)}"
 echo "  DISABLE_MULTICA_PLUGIN: ${DISABLE_MULTICA_PLUGIN:-0 (default)}"
 
 echo ""
@@ -38,7 +38,7 @@ if [[ -f "$SETTINGS" ]]; then
     if grep -q "$hook" "$SETTINGS" 2>/dev/null; then
       echo "  $hook: registered ✓"
     else
-      echo "  $hook: NOT REGISTERED ✗ — run bash install.sh"
+      echo "  $hook: NOT REGISTERED ✗ — run: npx multica-agent-plugin"
     fi
   done
 else

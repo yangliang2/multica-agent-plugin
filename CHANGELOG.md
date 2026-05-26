@@ -1,5 +1,56 @@
 # Changelog
 
+## [1.3.0] - 2026-05-27
+
+### Fixed (P0 security — all confirmed via reproduction)
+
+- **C7 — `hooks/stop.sh`**: evidence gate path traversal fixed — `issue_id` and
+  `story_id` from `loop.json` are now validated against `^[A-Za-z0-9._-]{1,64}$`
+  and `Path.resolve()` checks the resulting path does not escape the state dir;
+  python3 exception now exits 1 (fail-closed) so a corrupt loop.json cannot
+  silently bypass the gate; `stories=[]` now emits `NO_STORIES` and blocks DONE
+
+- **C5 addendum — `hooks/session-start.sh`**: insight sanitizer now rejects any
+  entry containing control chars or newlines (ord < 0x20) before other checks,
+  capping at 280 chars; this closes the `\n`-based STALE_KEY injection channel;
+  UNSAFE_CHARS_RE extended with `{}|`
+
+- **pre-tool.sh fallback — `hooks/pre-tool.sh`**: `python3 except` blocks now
+  call `sys.exit(1)` instead of `pass`, so `|| echo "${CLAUDE_TOOL_NAME:-}"`
+  fallback actually triggers when stdin JSON is absent/malformed; previously
+  all tools were silently allowed through on stdin-parse failure
+
+- **parseJsonc — `bin/install.js`**: trailing comma before `}` or `]` now stripped
+  before `JSON.parse` (regex `,(\s*[}\]])`); BOM stripped; `readSettings`
+  catch block now calls `process.exit(1)` instead of returning `{}`—corrupt
+  settings.json no longer silently overwrites user config
+
+- **install.sh**: now exits 1 immediately with a clear error pointing to
+  `npx multica-agent-plugin`; the script never copied hooks to
+  `~/.claude/hooks/multica/` and would produce a silently broken installation
+
+### Changed
+
+- **`.claude-plugin/marketplace.json`**: version synced to 1.3.0
+- **`tools/doctor.sh`**: `MULTICA_AGENT_SESSION` default shown as `0` (was `1`
+  — contradicted the v1.1.0 H1 fix); hook "not registered" message now points
+  to `npx multica-agent-plugin` instead of broken `bash install.sh`
+- **`docs/QUICKSTART.md`**: two broken CLI commands fixed:
+  `multica issue assign ISS-42 --agent default` → `--to "Lambda"`;
+  `multica issue comments ISS-42 --follow` → `multica issue comment list ISS-42`
+
+### Note on evidence gate (v1.2.0 omission)
+
+v1.2.0 introduced an evidence file gate in `hooks/stop.sh` (every `passes: true`
+story requires `.multica/state/{issue_id}/evidence/{story_id}.txt`) but this was
+not mentioned in the v1.2.0 CHANGELOG. The gate is documented in
+`skills/core/verification.md` (Gate Function step 4) and
+`skills/advanced/persistence-loop.md` (Step 5). If `<promise>DONE</promise>` is
+unexpectedly rejected with "missing evidence files", create the evidence file
+for each story before re-emitting the signal.
+
+---
+
 ## [1.2.0] - 2026-05-27
 
 ### Fixed (P1 — security hardening + reliability)

@@ -54,7 +54,7 @@ try:
     d = json.load(sys.stdin)
     print(d.get('tool_name', ''))
 except Exception:
-    pass
+    sys.exit(1)
 " 2>/dev/null || echo "${CLAUDE_TOOL_NAME:-}")
 
 if [[ "$tool_name" != "Bash" ]]; then
@@ -71,7 +71,7 @@ try:
     else:
         print('')
 except Exception:
-    pass
+    sys.exit(1)
 " 2>/dev/null || echo "")
 
 # Fallback: if stdin parse gave nothing, try legacy env var path
@@ -84,7 +84,7 @@ try:
     d = json.load(sys.stdin)
     print(d.get('command', ''))
 except Exception:
-    pass
+    sys.exit(1)
 " 2>/dev/null || echo "")
   fi
 fi

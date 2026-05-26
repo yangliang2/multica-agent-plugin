@@ -95,8 +95,7 @@ from datetime import datetime
 workdir = sys.argv[1]
 entries_file = sys.argv[2]
 KEY_RE = re.compile(r'^[A-Za-z0-9._-]{1,64}$')
-UNSAFE_CHARS_RE = re.compile(r'[`\\\[\]<>]')
-
+UNSAFE_CHARS_RE = re.compile(r'[`\\\[\]<>{}|]')
 lines = []
 stale_keys = []
 
@@ -122,7 +121,11 @@ with open(entries_file) as f:
         if not insight:
             continue
 
-        # C5: sanitize insight — strip markdown structural characters
+        # C5: sanitize insight — reject control chars (incl. newlines), strip structural chars, cap length
+        if any(ord(c) < 0x20 for c in insight):
+            continue  # reject entries with embedded newlines/control chars
+        if len(insight) > 280:
+            insight = insight[:280]
         insight = UNSAFE_CHARS_RE.sub('', insight).strip()
         if not insight:
             continue

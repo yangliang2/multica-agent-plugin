@@ -1,7 +1,14 @@
 #!/usr/bin/env bash
-echo "⚠️  install.sh is deprecated. Use: npx multica-agent-plugin"
-echo "   Or: node bin/install.js"
-echo "   Continuing with legacy install..."
+# install.sh is no longer functional — it does not copy hooks to the stable
+# path (~/.claude/hooks/multica/) required by the current hook registration.
+# Use the npm installer instead.
+echo "[ERROR] install.sh is not functional in this version."
+echo "  Use: npx multica-agent-plugin"
+echo "  Or:  node bin/install.js"
+echo ""
+echo "If Node.js is unavailable, install Node.js >= 16 first:"
+echo "  https://nodejs.org/"
+exit 1
 # Install multica-agent-plugin into Claude Code.
 #
 # Steps:

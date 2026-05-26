@@ -518,9 +518,18 @@ EOF
 # Create loop.json to trigger DONE path; backdate mtime so throttle check passes
 mkdir -p "$tmpdir_s10/.multica/state/test-prune-issue"
 cat > "$tmpdir_s10/.multica/state/test-prune-issue/loop.json" << 'EOF'
-{"active": true, "iteration": 1, "phase": "execution", "max_iterations": 50}
+{"active": true, "iteration": 1, "phase": "execution", "max_iterations": 50, "issue_id": "test-prune-issue", "stories": [{"id": "S1", "passes": true}]}
 EOF
 touch -t 200001010000 "$tmpdir_s10/.multica/state/test-prune-issue/loop.json"
+
+# Evidence file required by stop.sh evidence gate
+mkdir -p "$tmpdir_s10/.multica/state/test-prune-issue/evidence"
+cat > "$tmpdir_s10/.multica/state/test-prune-issue/evidence/S1.txt" << 'EV'
+command: echo test
+exit_code: 0
+output_hash: abc12345
+summary: ok
+EV
 
 # Run stop.sh with DONE signal
 MULTICA_WORKDIR="$tmpdir_s10" MULTICA_ISSUE_ID="test-prune-issue" \

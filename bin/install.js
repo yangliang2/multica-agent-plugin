@@ -32,6 +32,8 @@ const err = (s) => console.error(`${R}[error]${X} ${s}`);
 
 // Parse JSONC (JSON with comments) safely — distinguishes // inside strings from line comments
 function parseJsonc(str) {
+  // Strip BOM
+  if (str.charCodeAt(0) === 0xFEFF) str = str.slice(1);
   let result = '';
   let inString = false;
   let i = 0;
@@ -56,16 +58,30 @@ function parseJsonc(str) {
       result += ch; i++;
     }
   }
+  // Strip trailing commas before } or ] (common in JSONC)
+  result = result.replace(/,(\s*[}\]])/g, '$1');
   return JSON.parse(result);
 }
 
 function readSettings() {
   if (!fs.existsSync(SETTINGS_PATH)) return {};
-  try {
-    const raw = fs.readFileSync(SETTINGS_PATH, 'utf8');
-    try { return JSON.parse(raw); }
-    catch { return parseJsonc(raw); }
-  } catch { return {}; }
+  // Refuse to operate on symlinks to prevent reading unintended files
+  const st = fs.lstatSync(SETTINGS_PATH);
+  if (st.isSymbolicLink()) {
+    warn(`${SETTINGS_PATH} is a symbolic link — skipping read (will create fresh)`);
+    return {};
+  }
+  const raw = fs.readFileSync(SETTINGS_PATH, 'utf8');
+  try { return JSON.parse(raw); }
+  catch {
+    try { return parseJsonc(raw); }
+    catch (e) {
+      // fail-closed: corrupt settings.json → do not silently return {}
+      err(`Failed to parse ${SETTINGS_PATH}: ${e.message}`);
+      err('Backup is at ' + SETTINGS_PATH + '.bak (if it exists). Fix manually and re-run.');
+      process.exit(1);
+    }
+  }
 }
 
 function writeSettings(settings) {

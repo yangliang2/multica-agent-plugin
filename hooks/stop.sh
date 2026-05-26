@@ -150,30 +150,60 @@ fi
 
 if [[ "$done_signal" == "true" ]]; then
   # Evidence gate: every passes=true story must have a non-empty evidence file
+  # C7: issue_id and story_id are validated against a strict format and path is
+  #     resolved to prevent path traversal. Python exits 1 on any error (fail-closed).
   if [[ -f "$LOOP_JSON" ]]; then
     _missing_evidence=$(python3 -c "
-import json, sys, os
+import json, sys, re
 from pathlib import Path
+
+ID_RE = re.compile(r'^[A-Za-z0-9._-]{1,64}$')
+
 try:
     d = json.load(open(sys.argv[1]))
-    issue_id = d.get('issue_id', '')
     workdir = sys.argv[2]
+
+    issue_id = d.get('issue_id', '')
+    if not issue_id or not ID_RE.match(issue_id):
+        print('INVALID_ISSUE_ID')
+        sys.exit(0)
+
+    state_root = (Path(workdir) / '.multica' / 'state').resolve()
+    issue_dir = (state_root / issue_id).resolve()
+    # Reject if issue_id escapes state dir
+    if state_root not in issue_dir.parents and issue_dir != state_root:
+        print('INVALID_ISSUE_ID')
+        sys.exit(0)
+
+    stories = d.get('stories', [])
+    if not stories:
+        print('NO_STORIES')
+        sys.exit(0)
+
     missing = []
-    for s in d.get('stories', []):
+    for s in stories:
         if not s.get('passes', False):
             continue
         sid = s.get('id', '')
-        if not sid:
+        if not sid or not ID_RE.match(sid):
+            missing.append(sid or 'INVALID_SID')
             continue
-        ev = Path(workdir) / '.multica' / 'state' / issue_id / 'evidence' / f'{sid}.txt'
+        ev = (issue_dir / 'evidence' / f'{sid}.txt').resolve()
+        # Reject if sid escapes issue dir
+        if issue_dir not in ev.parents:
+            missing.append(sid)
+            continue
         if not ev.exists() or ev.stat().st_size == 0:
             missing.append(sid)
     print(','.join(missing))
-except Exception:
-    pass
-" "$LOOP_JSON" "$MULTICA_WORKDIR" 2>/dev/null || echo "")
-    if [[ -n "$_missing_evidence" ]]; then
-      echo "[stop.sh] DONE rejected — missing evidence files for stories: ${_missing_evidence}" >&2
+except Exception as e:
+    print(f'ERROR:{e}', file=sys.stderr)
+    sys.exit(1)
+" "$LOOP_JSON" "$MULTICA_WORKDIR" 2>/dev/null)
+    _ev_exit=$?
+    # fail-closed: python error → treat as missing evidence
+    if [[ $_ev_exit -ne 0 ]] || [[ -n "$_missing_evidence" ]]; then
+      echo "[stop.sh] DONE rejected — missing evidence files for stories: ${_missing_evidence:-python-error}" >&2
       done_signal=false
     fi
   fi

@@ -63,10 +63,10 @@ multica issue create --title "Hello agent" --body "Print the current date to a c
 # → prints issue ID, e.g. ISS-42
 
 # Assign to an agent
-multica issue assign ISS-42 --agent default
+multica issue assign ISS-42 --to "Lambda"
 
 # Watch the comment trail
-multica issue comments ISS-42 --follow
+multica issue comment list ISS-42
 ```
 
 Within the first agent turn you will see `[phase] discover` then `[phase] plan`.

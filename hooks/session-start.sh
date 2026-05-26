@@ -388,7 +388,13 @@ if latest:
       _qid="${_last_hitl%%|*}"
       _hours="${_last_hitl##*|}"
       _threshold="${MULTICA_HITL_TIMEOUT_HOURS}"
-      _timed_out=$(python3 -c "print('yes' if float('${_hours}') > float('${_threshold}') else 'no')" 2>/dev/null || echo "no")
+      _timed_out=$(python3 -c "
+import sys
+try:
+    print('yes' if float(sys.argv[1]) > float(sys.argv[2]) else 'no')
+except Exception:
+    print('no')
+" "$_hours" "$_threshold" 2>/dev/null || echo "no")
       if [[ "$_timed_out" == "yes" ]]; then
         context_parts=("## HITL Timeout Alert"$'\n'"[HITL:timeout] question_id=${_qid} — waited ${_hours}h (threshold: ${_threshold}h).
 Proceed with the most conservative available option without waiting for human reply.

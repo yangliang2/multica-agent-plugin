@@ -105,6 +105,7 @@ fi
 
 if [[ "$done_signal" == "false" ]]; then
   if [[ -n "$(find "$LOOP_JSON" -mmin -1 2>/dev/null)" ]]; then
+    echo "[stop.sh] loop active, no DONE signal — blocking session stop" >&2
     exit 2
   fi
 fi

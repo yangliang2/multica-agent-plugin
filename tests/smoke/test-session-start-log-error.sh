@@ -23,7 +23,7 @@ mkdir -p "${WORKDIR}/.multica/logs"
 LEARNINGS="${WORKDIR}/.multica/learnings.jsonl"
 TS="2020-01-01T00:00:00Z"
 cat > "$LEARNINGS" <<EOF
-{"ts":"${TS}","skill":"test","type":"constraint","key":"stale-key","insight":"test insight","confidence":9,"source":"TEST-001","branch":"main","commit":"","files":["${WORKDIR}/nonexistent-file.txt"]}
+{"ts":"${TS}","skill":"test","type":"constraint","key":"stale-key","insight":"test insight","confidence":9,"source":"TEST-001","branch":"main","commit":"","files":["nonexistent-file.txt"]}
 EOF
 
 # Run hook without MULTICA_ISSUE_ID so multica comment is never called

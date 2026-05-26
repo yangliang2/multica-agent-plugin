@@ -82,63 +82,96 @@ if [[ -f "$LEARNINGS" && -s "$LEARNINGS" ]]; then
 
   if [[ -n "$learnings_combined" ]]; then
     if command -v python3 >/dev/null 2>&1; then
-      insights=""
-      while IFS= read -r entry; do
-        [[ -z "$entry" ]] && continue
-
-        result=$(python3 - "$entry" "$MULTICA_WORKDIR" <<'PYEOF'
-import json, sys
+      # M2: single python3 call for all entries (avoids 20x fork overhead)
+      # C5: validates key format, rejects path traversal in files[], sanitizes insight
+      # Write entries to a tmp file so python3 can read them (pipe + heredoc conflict in bash)
+      _learnings_tmp=$(mktemp)
+      printf '%s\n' "$learnings_combined" > "$_learnings_tmp"
+      _py_result=$(python3 - "$MULTICA_WORKDIR" "$_learnings_tmp" <<'PYEOF'
+import json, sys, re
 from pathlib import Path
 from datetime import datetime
 
-entry_str = sys.argv[1]
-workdir   = sys.argv[2]
+workdir = sys.argv[1]
+entries_file = sys.argv[2]
+KEY_RE = re.compile(r'^[A-Za-z0-9._-]{1,64}$')
+UNSAFE_CHARS_RE = re.compile(r'[`\\\[\]<>]')
 
-try:
-    e = json.loads(entry_str)
-except Exception:
-    sys.exit(0)
+lines = []
+stale_keys = []
 
-key     = e.get("key", "")
-insight = e.get("insight", "")
-conf    = e.get("confidence", 0)
-ts      = e.get("ts", "")
-files   = e.get("files", [])
+with open(entries_file) as f:
+    for line in f:
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            e = json.loads(line)
+        except Exception:
+            continue
 
-if not insight:
-    sys.exit(0)
+        key     = e.get("key", "")
+        insight = e.get("insight", "")
+        conf    = e.get("confidence", 0)
+        ts      = e.get("ts", "")
+        files   = e.get("files", [])
 
-stale = False
-if files and ts:
-    try:
-        entry_time = datetime.fromisoformat(ts.replace("Z", "+00:00")).timestamp()
+        # C5: validate key format
+        if not key or not KEY_RE.match(key):
+            continue
+        if not insight:
+            continue
+
+        # C5: sanitize insight — strip markdown structural characters
+        insight = UNSAFE_CHARS_RE.sub('', insight).strip()
+        if not insight:
+            continue
+
+        # C5: check files[] for path traversal (reject absolute paths and ..)
+        safe_files = []
         for f in files:
-            fp = Path(f) if Path(f).is_absolute() else Path(workdir) / f
-            if not fp.exists():
-                stale = True
-                break
-            if fp.stat().st_mtime > entry_time:
-                stale = True
-                break
-    except Exception:
-        pass
+            if not isinstance(f, str):
+                continue
+            if Path(f).is_absolute() or '..' in Path(f).parts:
+                continue
+            safe_files.append(f)
 
-prefix = "[possibly stale] " if stale else ""
-print(f"- {prefix}[{key}] (conf:{conf}) {insight}")
-if stale and key:
-    print(f"STALE_KEY:{key}")
+        # Staleness check using only safe relative files
+        stale = False
+        if safe_files and ts:
+            try:
+                entry_time = datetime.fromisoformat(ts.replace("Z", "+00:00")).timestamp()
+                for f in safe_files:
+                    fp = Path(workdir) / f
+                    if not fp.exists():
+                        stale = True
+                        break
+                    if fp.stat().st_mtime > entry_time:
+                        stale = True
+                        break
+            except Exception:
+                pass
+
+        prefix = "[possibly stale] " if stale else ""
+        lines.append(f"- {prefix}[{key}] (conf:{conf}) {insight}")
+        if stale:
+            stale_keys.append(f"STALE_KEY:{key}")
+
+for l in lines:
+    print(l)
+for s in stale_keys:
+    print(s)
 PYEOF
-        )
-        if [[ -n "$result" ]]; then
-          while IFS= read -r _rline; do
-            if [[ "$_rline" == STALE_KEY:* ]]; then
-              _stale_keys_arr+=("${_rline#STALE_KEY:}")
-            else
-              insights="${insights}${_rline}"$'\n'
-            fi
-          done <<< "$result"
+      )
+      rm -f "$_learnings_tmp"
+      insights=""
+      while IFS= read -r _rline; do
+        if [[ "$_rline" == STALE_KEY:* ]]; then
+          _stale_keys_arr+=("${_rline#STALE_KEY:}")
+        else
+          insights="${insights}${_rline}"$'\n'
         fi
-      done <<< "$learnings_combined"
+      done <<< "$_py_result"
     else
       insights=$(printf '%s\n' "$learnings_combined" \
         | awk -F'"' '

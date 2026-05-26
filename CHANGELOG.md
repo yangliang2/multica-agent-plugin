@@ -1,5 +1,41 @@
 # Changelog
 
+## [1.2.0] - 2026-05-27
+
+### Fixed (P1 — security hardening + reliability)
+
+- **C3 — `hooks/stop.sh`**: `git commit` now scoped to `-- "$_learnings"` pathspec.
+  Previously `git commit` without pathspec would silently bundle any unrelated
+  staged files into the `chore(knowledge): update learnings` commit.
+
+- **C4 — `bin/install.js`**: three-part `settings.json` safety fix:
+  - JSONC parser replaced with a state-machine implementation that correctly
+    skips `//` only outside string literals (prevents mangling URLs like `https://`)
+  - Atomic write via `tmp + fs.renameSync` (no corrupt file on mid-write crash)
+  - Backup to `.bak` before every write
+  - `CLAUDE_SETTINGS_PATH` env var rejected if it points outside `~/.claude/`
+
+- **C5 — `hooks/session-start.sh`**: `learnings.jsonl` treated as untrusted input:
+  - `key` field validated against `^[A-Za-z0-9._-]{1,64}$` — invalid keys skipped
+  - `files[]` entries reject absolute paths and any path containing `..`
+  - `insight` field stripped of markdown structural characters before context injection
+
+### Changed
+
+- **M2 — `hooks/session-start.sh`**: learnings processing now uses a single
+  `python3` call for all entries instead of one fork per entry (≈20× fork reduction
+  per SessionStart). Data passed via temp file to avoid bash pipe+heredoc stdin conflict.
+
+- **`tests/smoke/run-claude.sh`**, **`test-session-start-log-error.sh`**: test
+  fixtures updated to use relative paths in `files[]` (correct per C5 — absolute
+  paths are now rejected as potential path traversal).
+
+### Tests
+
+All 5 smoke test files pass (50/50 scenarios, 0 XFAIL).
+
+---
+
 ## [1.1.0] - 2026-05-27
 
 ### Fixed (P0 — "Take-back trust" sprint)

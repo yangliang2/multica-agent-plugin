@@ -439,7 +439,7 @@ trap 'rm -rf "$tmpdir_s9"' EXIT
 mkdir -p "$tmpdir_s9/.multica"
 # Create a learning that references a non-existent file
 cat > "$tmpdir_s9/.multica/learnings.jsonl" << EOF
-{"ts":"2026-01-01T00:00:00Z","key":"stale-learning","insight":"uses deleted file","confidence":8,"files":["$tmpdir_s9/nonexistent.py"]}
+{"ts":"2026-01-01T00:00:00Z","key":"stale-learning","insight":"uses deleted file","confidence":8,"files":["nonexistent.py"]}
 {"ts":"2026-01-01T00:00:00Z","key":"fresh-learning","insight":"no files referenced","confidence":7,"files":[]}
 EOF
 

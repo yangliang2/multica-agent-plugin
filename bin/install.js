@@ -9,8 +9,20 @@ const { execSync, spawnSync } = require('child_process');
 const VERSION = fs.readFileSync(path.join(__dirname, '..', 'VERSION'), 'utf8').trim();
 const PLUGIN_ROOT = path.resolve(__dirname, '..');
 const HOOKS_TARGET = path.join(os.homedir(), '.claude', 'hooks', 'multica');
-const SETTINGS_PATH = process.env.CLAUDE_SETTINGS_PATH ||
-  path.join(os.homedir(), '.claude', 'settings.json');
+const CLAUDE_DIR = path.join(os.homedir(), '.claude');
+const SETTINGS_PATH = (() => {
+  const custom = process.env.CLAUDE_SETTINGS_PATH;
+  if (custom) {
+    const resolved = path.resolve(custom);
+    // Reject paths outside ~/.claude/ to prevent CLAUDE_SETTINGS_PATH injection
+    if (!resolved.startsWith(CLAUDE_DIR + path.sep) && resolved !== path.join(CLAUDE_DIR, 'settings.json')) {
+      console.error(`\x1b[31m[error]\x1b[0m CLAUDE_SETTINGS_PATH must be inside ${CLAUDE_DIR}`);
+      process.exit(1);
+    }
+    return resolved;
+  }
+  return path.join(CLAUDE_DIR, 'settings.json');
+})();
 
 // Colors
 const G = '\x1b[32m', Y = '\x1b[33m', R = '\x1b[31m', B = '\x1b[1m', X = '\x1b[0m';
@@ -18,9 +30,33 @@ const ok = (s) => console.log(`${G}[install]${X} ${s}`);
 const warn = (s) => console.log(`${Y}[warn]${X} ${s}`);
 const err = (s) => console.error(`${R}[error]${X} ${s}`);
 
-// Strip JSONC comments for settings.json parsing
-function stripJsonComments(str) {
-  return str.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '');
+// Parse JSONC (JSON with comments) safely — distinguishes // inside strings from line comments
+function parseJsonc(str) {
+  let result = '';
+  let inString = false;
+  let i = 0;
+  while (i < str.length) {
+    const ch = str[i];
+    if (inString) {
+      result += ch;
+      if (ch === '\\') { result += str[++i] || ''; } // escaped char
+      else if (ch === '"') { inString = false; }
+      i++;
+    } else if (ch === '"') {
+      inString = true; result += ch; i++;
+    } else if (ch === '/' && str[i + 1] === '/') {
+      // line comment — skip to end of line
+      while (i < str.length && str[i] !== '\n') i++;
+    } else if (ch === '/' && str[i + 1] === '*') {
+      // block comment — skip to */
+      i += 2;
+      while (i < str.length && !(str[i] === '*' && str[i + 1] === '/')) i++;
+      i += 2;
+    } else {
+      result += ch; i++;
+    }
+  }
+  return JSON.parse(result);
 }
 
 function readSettings() {
@@ -28,13 +64,22 @@ function readSettings() {
   try {
     const raw = fs.readFileSync(SETTINGS_PATH, 'utf8');
     try { return JSON.parse(raw); }
-    catch { return JSON.parse(stripJsonComments(raw)); }
+    catch { return parseJsonc(raw); }
   } catch { return {}; }
 }
 
 function writeSettings(settings) {
-  fs.mkdirSync(path.dirname(SETTINGS_PATH), { recursive: true });
-  fs.writeFileSync(SETTINGS_PATH, JSON.stringify(settings, null, 2) + '\n');
+  const dir = path.dirname(SETTINGS_PATH);
+  fs.mkdirSync(dir, { recursive: true });
+  const content = JSON.stringify(settings, null, 2) + '\n';
+  // Backup existing file before writing
+  if (fs.existsSync(SETTINGS_PATH)) {
+    fs.copyFileSync(SETTINGS_PATH, SETTINGS_PATH + '.bak');
+  }
+  // Atomic write via tmp + rename
+  const tmp = SETTINGS_PATH + '.tmp.' + process.pid;
+  fs.writeFileSync(tmp, content, { mode: 0o600 });
+  fs.renameSync(tmp, SETTINGS_PATH);
 }
 
 function detectShell() {

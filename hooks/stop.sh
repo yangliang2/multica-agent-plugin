@@ -191,8 +191,9 @@ print(json.dumps(d))
 
   if [[ -f "$_learnings" ]]; then
     if git -C "$MULTICA_WORKDIR" rev-parse --git-dir >/dev/null 2>&1; then
-      if ! git -C "$MULTICA_WORKDIR" diff --cached --quiet 2>/dev/null; then
-        git -C "$MULTICA_WORKDIR" commit -m "chore(knowledge): update learnings [skip ci]" \
+      if ! git -C "$MULTICA_WORKDIR" diff --cached --quiet -- "$_learnings" 2>/dev/null; then
+        git -C "$MULTICA_WORKDIR" commit -- "$_learnings" \
+          -m "chore(knowledge): update learnings [skip ci]" \
           2>/dev/null || log_error "failed to git commit learnings"
       fi
     fi

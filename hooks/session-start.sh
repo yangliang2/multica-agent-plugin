@@ -69,36 +69,23 @@ fi
 
 _stale_keys_arr=()
 if [[ -f "$LEARNINGS" && -s "$LEARNINGS" ]]; then
-  recent=$(tail -n 10 "$LEARNINGS")
-
-  high_conf=$(awk '
-    /"confidence":[[:space:]]*([89]|10)/ { print }
-    /"confidence":[[:space:]]*7/          { print }
-  ' "$LEARNINGS")
-
-  learnings_combined=$(printf '%s\n%s\n' "$recent" "$high_conf" \
-    | awk '!seen[$0]++' \
-    | head -n 20)
-
-  if [[ -n "$learnings_combined" ]]; then
-    if command -v python3 >/dev/null 2>&1; then
-      # M2: single python3 call for all entries (avoids 20x fork overhead)
-      # C5: validates key format, rejects path traversal in files[], sanitizes insight
-      # Write entries to a tmp file so python3 can read them (pipe + heredoc conflict in bash)
-      _learnings_tmp=$(mktemp)
-      printf '%s\n' "$learnings_combined" > "$_learnings_tmp"
-      _py_result=$(python3 - "$MULTICA_WORKDIR" "$_learnings_tmp" <<'PYEOF'
+  if command -v python3 >/dev/null 2>&1; then
+    # Pass the raw learnings file directly to python3 which handles:
+    # - confidence>=7 filtering (replaces awk ERE/BRE-ambiguous high_conf)
+    # - recent-10 + dedup logic
+    # - C5: key validation, path traversal rejection, insight sanitization
+    _learnings_tmp=$(mktemp)
+    cp "$LEARNINGS" "$_learnings_tmp"
+    _py_result=$(python3 - "$MULTICA_WORKDIR" "$_learnings_tmp" <<'PYEOF'
 import json, sys, re
 from pathlib import Path
 from datetime import datetime
 
 workdir = sys.argv[1]
 entries_file = sys.argv[2]
-KEY_RE = re.compile(r'^[A-Za-z0-9._-]{1,64}$')
-UNSAFE_CHARS_RE = re.compile(r'[`\\\[\]<>{}|]')
-lines = []
-stale_keys = []
 
+# Load all entries, dedup by key (last-wins), keep recent 10 + confidence>=7
+all_entries = []
 with open(entries_file) as f:
     for line in f:
         line = line.strip()
@@ -106,9 +93,26 @@ with open(entries_file) as f:
             continue
         try:
             e = json.loads(line)
+            all_entries.append(e)
         except Exception:
             continue
 
+seen_keys = {}
+for e in all_entries:
+    k = e.get("key", "")
+    if k:
+        seen_keys[k] = e
+
+recent_keys = [e.get("key","") for e in all_entries[-10:] if e.get("key","")]
+high_conf_keys = [k for k, e in seen_keys.items() if e.get("confidence", 0) >= 7]
+candidate_keys = list(dict.fromkeys(recent_keys + high_conf_keys))[:20]
+candidates = [seen_keys[k] for k in candidate_keys if k in seen_keys]
+KEY_RE = re.compile(r'^[A-Za-z0-9._-]{1,64}$')
+UNSAFE_CHARS_RE = re.compile(r'[`\\\[\]<>{}|]')
+lines = []
+stale_keys = []
+
+for e in candidates:
         key     = e.get("key", "")
         insight = e.get("insight", "")
         conf    = e.get("confidence", 0)
@@ -175,23 +179,6 @@ PYEOF
           insights="${insights}${_rline}"$'\n'
         fi
       done <<< "$_py_result"
-    else
-      insights=$(printf '%s\n' "$learnings_combined" \
-        | awk -F'"' '
-            {
-              insight=""
-              key=""
-              conf=""
-              for(i=1;i<=NF;i++){
-                if($i=="insight")  insight=$(i+2)
-                if($i=="key")      key=$(i+2)
-                if($i=="confidence"){ gsub(/[^0-9]/,"",$( i+1)); conf=$(i+1) }
-              }
-              if(insight!="") printf "- [%s] (conf:%s) %s\n", key, conf, insight
-            }
-          ')
-    fi
-
     if [[ -n "$insights" ]]; then
       context_parts+=("## Prior Learnings"$'\n'"$insights")
     fi

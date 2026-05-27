@@ -36,14 +36,23 @@ Using an older multica version will cause hook commands to fail silently
 (exit 0 on error, by design) but may produce incorrect loop state or missing
 checkpoint comments.
 
-## Destructive Guard Uses Local Deny List (not multica safe-exec)
+## Destructive Guard Is a Convenience Check, Not a Security Control
 
-`hooks/pre-tool.sh` implements the destructive-guard capability using a local
-pattern file (`tools/safe-exec.deny.list`) rather than a `multica safe-exec`
-subcommand. The `multica safe-exec` subcommand does not exist in the multica
-CLI. The local deny list covers the most common destructive patterns (force
-push, `rm -rf /`, `DROP DATABASE`, etc.). To extend coverage, edit
-`tools/safe-exec.deny.list` directly.
+`hooks/pre-tool.sh` checks tool calls against `tools/safe-exec.deny.list` using
+substring matching (`grep -qiF`). This is a **convenience check to catch
+accidental misuse**, not a security control. It **cannot** prevent a determined
+agent or user from bypassing it via:
+
+- Double spaces (`rm -rf  /`), flag reordering (`rm -fr /`)
+- Shell wrappers (`bash -c 'rm -rf /'`, `eval`, heredocs)
+- Commands not in the deny list (`find / -delete`, `git clean -fdx`)
+
+The `multica safe-exec` subcommand does not exist in the multica CLI.
+
+**Do not rely on this check to enforce security policy.** For production
+multi-tenant deployments, use OS-level sandboxing (containers, namespaces) or
+a proper allowlist at the executor level. To extend the convenience patterns,
+edit `tools/safe-exec.deny.list` directly.
 
 ## Post-MVP Harness Extension Paths
 

@@ -1,5 +1,43 @@
 # Changelog
 
+## [1.4.0] - 2026-05-28
+
+### Fixed (engineering quality / tech debt)
+
+- **`hooks/session-start.sh`** — `high_conf` awk ERE/BRE filter replaced with
+  Python. The previous `/"confidence":[[:space:]]*([89]|10)/` pattern used ERE
+  syntax that is silently broken on busybox/mawk (Alpine containers). Now the
+  raw learnings file is passed directly to the existing python3 batch call;
+  Python handles confidence≥7 filtering, recent-10 + dedup logic, and C5
+  validation in a single pass. The awk fallback path is removed.
+
+- **`uninstall.sh`** — now correctly removes hooks installed by `npx` (paths
+  under `~/.claude/hooks/multica/`). Previously matched only `PLUGIN_ROOT`
+  paths, leaving npm-installed hooks dangling. Prefers `node bin/install.js
+  --uninstall`; falls back to direct python3 removal with atomic write.
+
+- **`hooks/stop.sh`** — added `loop.json` schema validation before processing:
+  `issue_id` and `stories[].id` validated against `^[A-Za-z0-9._-]{1,64}$`;
+  `iteration` and `max_iterations` range-checked; `phase` checked against
+  whitelist. Malformed files are rejected with `log_error` + `exit 0`
+  (non-blocking — Claude Code stop is not blocked by bad plugin data).
+
+- **`KNOWN-LIMITATIONS.md`** — deny list section rewritten to clearly state it
+  is a convenience check, not a security control; lists bypass vectors;
+  recommends OS-level sandboxing for production multi-tenant deployments.
+
+### Added
+
+- **`tests/unit/install.test.js`** — 15 unit tests for `bin/install.js`:
+  `parseJsonc` (trailing comma, BOM, URL in string, block comment, escaped
+  quote, invalid JSON) and `CLAUDE_SETTINGS_PATH` path-escape validation
+- **`package.json`** — `test:unit` and `test:smoke` scripts; `npm test` now
+  runs unit tests first, then smoke suite
+- **`.github/workflows/ci.yml`** — `shellcheck` job (warning level) and `unit`
+  job added alongside existing `syntax` and `smoke` jobs
+
+---
+
 ## [1.3.0] - 2026-05-27
 
 ### Fixed (P0 security — all confirmed via reproduction)

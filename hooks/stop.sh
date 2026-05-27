@@ -80,6 +80,39 @@ if [[ ! -f "$LOOP_JSON" ]]; then
   exit 0
 fi
 
+# Schema validation: reject malformed loop.json before acting on it
+_schema_ok=$(python3 -c "
+import json, sys, re
+ID_RE = re.compile(r'^[A-Za-z0-9._-]{1,64}$')
+PHASE_OK = {'setup','execution','execute','deslop','complete','blocked','verification','report'}
+try:
+    d = json.load(open(sys.argv[1]))
+    iid = d.get('issue_id', '')
+    if iid and not ID_RE.match(iid):
+        print('bad_issue_id'); sys.exit(0)
+    it = d.get('iteration', 0)
+    if not isinstance(it, (int, float)) or not (0 <= int(it) <= 1000):
+        print('bad_iteration'); sys.exit(0)
+    mi = d.get('max_iterations', 50)
+    if not isinstance(mi, (int, float)) or not (1 <= int(mi) <= 1000):
+        print('bad_max_iterations'); sys.exit(0)
+    ph = d.get('phase', '')
+    if ph and ph not in PHASE_OK:
+        print('bad_phase'); sys.exit(0)
+    for s in d.get('stories', []):
+        sid = s.get('id', '')
+        if sid and not ID_RE.match(sid):
+            print('bad_story_id'); sys.exit(0)
+    print('ok')
+except Exception as e:
+    print(f'parse_error')
+" "$LOOP_JSON" 2>/dev/null || echo "python_error")
+
+if [[ "$_schema_ok" != "ok" ]]; then
+  log_error "loop.json schema validation failed (${_schema_ok}): ${LOOP_JSON}"
+  exit 0
+fi
+
 active=$(json_field "$LOOP_JSON" "active")
 iteration=$(json_field "$LOOP_JSON" "iteration")
 phase=$(json_field "$LOOP_JSON" "phase")

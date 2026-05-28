@@ -136,7 +136,6 @@ fi
 active=$(json_field "$LOOP_JSON" "active")
 iteration=$(json_field "$LOOP_JSON" "iteration")
 phase=$(json_field "$LOOP_JSON" "phase")
-max_iterations=$(json_field "$LOOP_JSON" "max_iterations")
 
 if [[ "$active" != "true" ]]; then
   exit 0

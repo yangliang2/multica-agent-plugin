@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+# pre-push hook: run shellcheck + npm test before pushing
+# Install: git config core.hooksPath .githooks
+set -euo pipefail
+
+echo "[pre-push] Running shellcheck..."
+if command -v shellcheck >/dev/null 2>&1; then
+  shellcheck -S warning hooks/*.sh tools/*.sh uninstall.sh
+  echo "[pre-push] shellcheck OK"
+else
+  echo "[pre-push] shellcheck not found — skipping (install with: apt-get install shellcheck)"
+fi
+
+echo "[pre-push] Running npm test..."
+npm test
+
+echo "[pre-push] All checks passed — pushing."

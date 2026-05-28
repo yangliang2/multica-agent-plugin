@@ -1,0 +1,249 @@
+name: Auto-fix CI failures
+
+on:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+
+jobs:
+  auto-fix:
+    if: >
+      github.event.workflow_run.conclusion == 'failure' &&
+      github.event.workflow_run.head_branch != github.event.repository.default_branch
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+
+    steps:
+      - name: Checkout PR branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install shellcheck
+        run: sudo apt-get install -y shellcheck
+
+      - name: Collect failure logs
+        id: logs
+        run: |
+          RUN_ID="${{ github.event.workflow_run.id }}"
+          REPO="${{ github.repository }}"
+
+          # Fetch failed job logs via gh CLI
+          FAILED_LOG=$(gh run view "$RUN_ID" --log-failed 2>&1 | head -200 || true)
+          echo "FAILED_LOG<<EOF_MARKER" >> "$GITHUB_ENV"
+          echo "$FAILED_LOG" >> "$GITHUB_ENV"
+          echo "EOF_MARKER" >> "$GITHUB_ENV"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Run local checks and collect output
+        id: local_checks
+        run: |
+          LOCAL=$(shellcheck -S warning hooks/*.sh tools/*.sh uninstall.sh 2>&1 || true)
+          echo "LOCAL_SHELLCHECK<<EOF_MARKER" >> "$GITHUB_ENV"
+          echo "$LOCAL" >> "$GITHUB_ENV"
+          echo "EOF_MARKER" >> "$GITHUB_ENV"
+
+      - name: Call Claude API for fix
+        id: claude_fix
+        run: |
+          node - <<'NODEJS_EOF'
+          const https = require('https');
+          const fs = require('fs');
+          const { execSync } = require('child_process');
+
+          const failedLog = process.env.FAILED_LOG || '';
+          const localShellcheck = process.env.LOCAL_SHELLCHECK || '';
+
+          // Read relevant files for context
+          const readFile = (p) => { try { return fs.readFileSync(p, 'utf8'); } catch { return ''; } };
+          const stopSh = readFile('hooks/stop.sh');
+          const sessionStartSh = readFile('hooks/session-start.sh');
+          const preToolSh = readFile('hooks/pre-tool.sh');
+
+          const prompt = `You are an expert bash developer. A CI pipeline has failed. Analyze the failure and produce ONLY the minimal fix.
+
+## CI failure log (last 200 lines)
+${failedLog}
+
+## Local shellcheck output
+${localShellcheck}
+
+## hooks/stop.sh (current)
+${stopSh.slice(0, 8000)}
+
+## hooks/session-start.sh (current)
+${sessionStartSh.slice(0, 8000)}
+
+## hooks/pre-tool.sh (current)
+${preToolSh.slice(0, 3000)}
+
+## Instructions
+Produce a JSON response with this exact structure:
+{
+  "analysis": "one sentence explaining root cause",
+  "patches": [
+    {
+      "file": "hooks/stop.sh",
+      "old": "exact string to replace (must match file exactly)",
+      "new": "replacement string"
+    }
+  ]
+}
+
+Rules:
+- Only fix what the CI log specifically reports as an error or warning
+- Each patch "old" must be a unique string that exists verbatim in the file
+- Prefer the smallest possible change
+- If nothing can be fixed automatically, return {"analysis": "...", "patches": []}
+- Return ONLY valid JSON, no markdown, no explanation outside JSON`;
+
+          const body = JSON.stringify({
+            model: 'claude-haiku-4-5-20251001',
+            max_tokens: 2048,
+            messages: [{ role: 'user', content: prompt }]
+          });
+
+          const options = {
+            hostname: 'api.anthropic.com',
+            path: '/v1/messages',
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'x-api-key': process.env.ANTHROPIC_API_KEY,
+              'anthropic-version': '2023-06-01',
+              'Content-Length': Buffer.byteLength(body)
+            }
+          };
+
+          const req = https.request(options, (res) => {
+            let data = '';
+            res.on('data', (chunk) => data += chunk);
+            res.on('end', () => {
+              try {
+                const resp = JSON.parse(data);
+                const text = resp.content?.[0]?.text || '';
+                // Extract JSON from response
+                const jsonMatch = text.match(/\{[\s\S]*\}/);
+                if (!jsonMatch) { console.log('NO_JSON'); process.exit(0); }
+                const fix = JSON.parse(jsonMatch[0]);
+
+                fs.writeFileSync('/tmp/claude-fix.json', JSON.stringify(fix, null, 2));
+                console.log('ANALYSIS:', fix.analysis);
+                console.log('PATCHES:', fix.patches?.length || 0);
+              } catch (e) {
+                console.error('Parse error:', e.message);
+                fs.writeFileSync('/tmp/claude-fix.json', '{"analysis":"parse error","patches":[]}');
+              }
+            });
+          });
+          req.on('error', (e) => { console.error(e); process.exit(1); });
+          req.write(body);
+          req.end();
+          NODEJS_EOF
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          FAILED_LOG: ${{ env.FAILED_LOG }}
+          LOCAL_SHELLCHECK: ${{ env.LOCAL_SHELLCHECK }}
+
+      - name: Apply patches
+        id: apply
+        run: |
+          python3 - <<'PYEOF'
+          import json, sys, os
+
+          fix_path = '/tmp/claude-fix.json'
+          if not os.path.exists(fix_path):
+              print("No fix file found — nothing to apply")
+              sys.exit(0)
+
+          with open(fix_path) as f:
+              fix = json.load(f)
+
+          patches = fix.get('patches', [])
+          print(f"Analysis: {fix.get('analysis','')}")
+          print(f"Applying {len(patches)} patch(es)")
+
+          applied = 0
+          for p in patches:
+              fpath = p.get('file', '')
+              old = p.get('old', '')
+              new = p.get('new', '')
+              if not fpath or not old:
+                  continue
+              try:
+                  content = open(fpath).read()
+                  if old not in content:
+                      print(f"  SKIP {fpath}: old string not found")
+                      continue
+                  content = content.replace(old, new, 1)
+                  open(fpath, 'w').write(content)
+                  print(f"  PATCHED {fpath}")
+                  applied += 1
+              except Exception as e:
+                  print(f"  ERROR {fpath}: {e}")
+
+          print(f"Applied {applied}/{len(patches)} patches")
+          with open(os.environ['GITHUB_ENV'], 'a') as f:
+              f.write(f"PATCHES_APPLIED={applied}\n")
+              f.write(f"FIX_ANALYSIS={fix.get('analysis','auto-fix')}\n")
+          PYEOF
+
+      - name: Verify fix locally
+        if: env.PATCHES_APPLIED != '0'
+        run: |
+          bash -n hooks/stop.sh hooks/session-start.sh hooks/pre-tool.sh
+          shellcheck -S warning hooks/*.sh tools/*.sh uninstall.sh
+          npm test
+
+      - name: Commit and push fix
+        if: env.PATCHES_APPLIED != '0'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add hooks/ tools/ bin/ tests/
+          git diff --cached --quiet && echo "Nothing to commit" && exit 0
+          git commit -m "fix(auto): ${{ env.FIX_ANALYSIS }}
+
+          Automated fix generated by Claude (haiku-4-5) in response to CI failure.
+          Run: ${{ github.event.workflow_run.id }}"
+          git push origin HEAD:${{ github.event.workflow_run.head_branch }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Comment on PR if fix applied
+        if: env.PATCHES_APPLIED != '0'
+        run: |
+          # Find PR for this branch
+          PR_NUM=$(gh pr list --head "${{ github.event.workflow_run.head_branch }}" --json number --jq '.[0].number' 2>/dev/null || echo "")
+          if [[ -n "$PR_NUM" ]]; then
+            gh pr comment "$PR_NUM" --body "🤖 **Auto-fix applied** — CI failure was detected and a fix was pushed automatically.
+
+**Analysis:** ${{ env.FIX_ANALYSIS }}
+
+Re-running CI on the new commit. Review the changes before merging."
+          fi
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Comment on PR if no fix found
+        if: env.PATCHES_APPLIED == '0'
+        run: |
+          PR_NUM=$(gh pr list --head "${{ github.event.workflow_run.head_branch }}" --json number --jq '.[0].number' 2>/dev/null || echo "")
+          if [[ -n "$PR_NUM" ]]; then
+            gh pr comment "$PR_NUM" --body "🤖 **Auto-fix attempted but could not generate a patch.**
+
+**Analysis:** ${{ env.FIX_ANALYSIS }}
+
+Manual intervention required. Check the CI logs for details."
+          fi
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

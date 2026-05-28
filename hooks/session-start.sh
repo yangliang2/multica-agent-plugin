@@ -90,10 +90,14 @@ fi
 _stale_keys_arr=()
 if [[ -f "$LEARNINGS" && -s "$LEARNINGS" ]]; then
   # M10: guard against oversized learnings file (max 1MB / 1000 lines)
-  _learnings_size=$(wc -c < "$LEARNINGS" 2>/dev/null || echo 0)
-  _learnings_lines=$(wc -l < "$LEARNINGS" 2>/dev/null || echo 0)
+  _learnings_size=$(wc -c < "$LEARNINGS" 2>/dev/null || echo "0")
+  _learnings_lines=$(wc -l < "$LEARNINGS" 2>/dev/null || echo "0")
+  _learnings_size=${_learnings_size//[^0-9]/}
+  _learnings_lines=${_learnings_lines//[^0-9]/}
+  _learnings_size=${_learnings_size:-0}
+  _learnings_lines=${_learnings_lines:-0}
   if [[ $_learnings_size -gt 1048576 ]] || [[ $_learnings_lines -gt 1000 ]]; then
-    log_error "learnings.jsonl too large (${_learnings_size} bytes, ${_learnings_lines} lines) — skipping to avoid SessionStart freeze. Run: tail -n 100 .multica/learnings.jsonl > .multica/learnings.jsonl.tmp && mv .multica/learnings.jsonl.tmp .multica/learnings.jsonl"
+    log_error "learnings.jsonl too large (${_learnings_size} bytes, ${_learnings_lines} lines) — skipping to avoid SessionStart freeze. Trim with: python3 -c \"import sys; lines=open(sys.argv[1]).readlines(); open(sys.argv[1],'w').writelines(lines[-100:])\" .multica/learnings.jsonl"
     context_parts+=("## Knowledge Warning"$'\n'"learnings.jsonl exceeds size limit (${_learnings_lines} lines, ${_learnings_size} bytes). Prior learnings skipped this session. Trim the file to restore learning injection.")
   elif command -v python3 >/dev/null 2>&1; then
     # Pass the raw learnings file directly to python3 which handles:

@@ -1,0 +1,144 @@
+name: Code Review
+
+on:
+  pull_request:
+    branches: [master]
+    types: [opened, synchronize, reopened]
+
+jobs:
+  review:
+    name: Claude Code Review
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+      checks: write
+    outputs:
+      severity: ${{ steps.review.outputs.severity }}
+      patches_needed: ${{ steps.review.outputs.patches_needed }}
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Run Claude review
+        id: review
+        run: |
+          node .github/scripts/claude-review.js
+          echo "exit_code=$?" >> "$GITHUB_OUTPUT"
+          if [[ -f /tmp/review-findings.json ]]; then
+            SEV=$(python3 -c "import json; print(json.load(open('/tmp/review-findings.json')).get('severity','LOW'))")
+            echo "severity=$SEV" >> "$GITHUB_OUTPUT"
+            if [[ "$SEV" == "CRITICAL" || "$SEV" == "HIGH" ]]; then
+              echo "patches_needed=true" >> "$GITHUB_OUTPUT"
+            else
+              echo "patches_needed=false" >> "$GITHUB_OUTPUT"
+            fi
+          fi
+        env:
+          ANTHROPIC_AUTH_TOKEN: ${{ secrets.ANTHROPIC_AUTH_TOKEN }}
+          ANTHROPIC_BASE_URL: ${{ secrets.ANTHROPIC_BASE_URL }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          AUTO_FIX_COUNT: "0"
+        continue-on-error: true
+
+      - name: Upload findings
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: review-findings
+          path: /tmp/review-findings.json
+          if-no-files-found: ignore
+
+  auto-fix:
+    name: Auto-fix HIGH/CRITICAL issues
+    runs-on: ubuntu-latest
+    needs: review
+    if: needs.review.outputs.patches_needed == 'true'
+    permissions:
+      contents: write
+      pull-requests: write
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install shellcheck
+        run: sudo apt-get install -y shellcheck
+
+      - name: Download review findings
+        uses: actions/download-artifact@v4
+        with:
+          name: review-findings
+          path: /tmp/
+
+      - name: Check auto-fix attempt count
+        id: check_count
+        run: |
+          COUNT=$(git log --oneline origin/master..HEAD | grep -c "fix(auto-review):" || true)
+          NEXT=$((COUNT + 1))
+          echo "count=$COUNT" >> "$GITHUB_OUTPUT"
+          echo "next=$NEXT" >> "$GITHUB_OUTPUT"
+          if [[ $COUNT -ge 3 ]]; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Run Claude auto-fix
+        if: steps.check_count.outputs.skip == 'false'
+        run: node .github/scripts/claude-autofix.js
+        env:
+          ANTHROPIC_AUTH_TOKEN: ${{ secrets.ANTHROPIC_AUTH_TOKEN }}
+          ANTHROPIC_BASE_URL: ${{ secrets.ANTHROPIC_BASE_URL }}
+
+      - name: Commit and push fix
+        if: steps.check_count.outputs.skip == 'false' && env.PATCHES_APPLIED != '0'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add hooks/ tools/ bin/ tests/
+          git diff --cached --quiet && echo "Nothing to commit" && exit 0
+          git commit -m "fix(auto-review): ${{ env.FIX_ANALYSIS }}
+
+          Automated fix for HIGH/CRITICAL issues found by Claude Code Review.
+          Attempt: ${{ steps.check_count.outputs.next }}/3"
+          git push origin HEAD:${{ github.event.pull_request.head.ref }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Comment — fix applied
+        if: steps.check_count.outputs.skip == 'false' && env.PATCHES_APPLIED != '0'
+        run: |
+          gh pr comment "${{ github.event.pull_request.number }}" --body \
+            "🤖 **Auto-fix applied** (attempt ${{ steps.check_count.outputs.next }}/3)
+
+          **Fix:** ${{ env.FIX_ANALYSIS }}
+
+          A new commit has been pushed. Re-running code review."
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Comment — fix limit reached
+        if: steps.check_count.outputs.skip == 'true'
+        run: |
+          gh pr comment "${{ github.event.pull_request.number }}" --body \
+            "⚠️ **Auto-fix limit reached (3/3).** Manual intervention required.
+
+          Claude was unable to fully resolve the HIGH/CRITICAL issues after 3 attempts. Please review the inline comments and fix manually."
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

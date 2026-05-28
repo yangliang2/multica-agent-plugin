@@ -89,9 +89,10 @@ jobs:
       - name: Check auto-fix attempt count
         id: check_count
         run: |
-          # Count existing auto-fix commits on this branch
           COUNT=$(git log --oneline origin/master..HEAD | grep -c "fix(auto-review):" || true)
+          NEXT=$((COUNT + 1))
           echo "count=$COUNT" >> "$GITHUB_OUTPUT"
+          echo "next=$NEXT" >> "$GITHUB_OUTPUT"
           if [[ $COUNT -ge 3 ]]; then
             echo "skip=true" >> "$GITHUB_OUTPUT"
           else
@@ -115,7 +116,7 @@ jobs:
           git commit -m "fix(auto-review): ${{ env.FIX_ANALYSIS }}
 
           Automated fix for HIGH/CRITICAL issues found by Claude Code Review.
-          Attempt: ${{ steps.check_count.outputs.count + 1 }}/3"
+          Attempt: ${{ steps.check_count.outputs.next }}/3"
           git push origin HEAD:${{ github.event.pull_request.head.ref }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -124,7 +125,7 @@ jobs:
         if: steps.check_count.outputs.skip == 'false' && env.PATCHES_APPLIED != '0'
         run: |
           gh pr comment "${{ github.event.pull_request.number }}" --body \
-            "🤖 **Auto-fix applied** (attempt ${{ steps.check_count.outputs.count + 1 }}/3)
+            "🤖 **Auto-fix applied** (attempt ${{ steps.check_count.outputs.next }}/3)
 
           **Fix:** ${{ env.FIX_ANALYSIS }}
 

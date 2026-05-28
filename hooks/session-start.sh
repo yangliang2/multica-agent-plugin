@@ -24,6 +24,26 @@ log_error() {
   echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] [session-start.sh] $*" >> "$HOOK_LOG" 2>/dev/null || true
 }
 
+# H9: runtime check — multica CLI >= 0.4.0 required
+_MULTICA_MIN_VERSION="0.4.0"
+if command -v multica >/dev/null 2>&1; then
+  _multica_ver=$(multica --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1 || echo "")
+  if [[ -n "$_multica_ver" ]]; then
+    _ver_ok=$(python3 -c "
+import sys
+def vt(v): return tuple(int(x) for x in v.split('.'))
+try:
+    print('ok' if vt(sys.argv[1]) >= vt(sys.argv[2]) else 'old')
+except Exception:
+    print('ok')  # unparseable — don't block
+" "$_multica_ver" "$_MULTICA_MIN_VERSION" 2>/dev/null || echo "ok")
+    if [[ "$_ver_ok" == "old" ]]; then
+      log_error "multica CLI ${_multica_ver} < ${_MULTICA_MIN_VERSION} — upgrade with: npm install -g @multica/cli"
+      context_parts+=("## CLI Version Warning"$'\n'"multica CLI ${_multica_ver} is below the required minimum ${_MULTICA_MIN_VERSION}. Some features may not work. Upgrade: npm install -g @multica/cli")
+    fi
+  fi
+fi
+
 json_escape() {
   local s="$1"
   s="${s//\\/\\\\}"
@@ -183,13 +203,16 @@ PYEOF
       context_parts+=("## Prior Learnings"$'\n'"$insights")
     fi
 
-    # Post [knowledge-warning] issue comment for stale learnings so reviewer can see them
+    # Post [knowledge-warning] issue comment for stale learnings — batched into one comment,
+    # with a per-session marker to avoid re-posting on every resume
     if [[ ${#_stale_keys_arr[@]} -gt 0 ]] && [[ -n "${MULTICA_ISSUE_ID:-}" ]] && command -v multica >/dev/null 2>&1; then
-      for _sk in "${_stale_keys_arr[@]}"; do
+      _stale_marker="${MULTICA_WORKDIR}/.multica/state/${MULTICA_ISSUE_ID}/stale-warning-$(date -u +%Y%m%d).marker"
+      if [[ ! -f "$_stale_marker" ]]; then
+        _stale_list=$(printf '"%s" ' "${_stale_keys_arr[@]}")
         multica issue comment add "$MULTICA_ISSUE_ID" \
-          --content "[knowledge-warning] Prior learning \"${_sk}\" may be stale (source file modified). Agent will proceed with caution." \
-          2>/dev/null || log_error "failed to post knowledge-warning for ${_sk}"
-      done
+          --content "[knowledge-warning] ${#_stale_keys_arr[@]} prior learning(s) may be stale (source files modified): ${_stale_list%. }. Agent will proceed with caution." \
+          2>/dev/null && touch "$_stale_marker" || log_error "failed to post knowledge-warning"
+      fi
     fi
   fi
 fi
@@ -214,6 +237,16 @@ if [[ -n "$issue_id" ]]; then
       iteration=$(awk -F'"' '/"iteration"/{gsub(/[^0-9]/,"",$3); print $3}' "$LOOP_JSON" | head -1)
       phase=$(awk -F'"' '/"phase"/{print $4}' "$LOOP_JSON" | head -1)
 
+      # H4: generate/refresh nonce for DONE signal binding
+      _nonce_file="${MULTICA_WORKDIR}/.multica/state/${issue_id}/done-nonce.txt"
+      _nonce=$(cat "$_nonce_file" 2>/dev/null || true)
+      if [[ -z "$_nonce" ]]; then
+        _nonce=$(printf '%s%s' "$issue_id" "$(date -u +%s%N 2>/dev/null || date -u +%s)" \
+          | sha256sum | cut -c1-12)
+        mkdir -p "$(dirname "$_nonce_file")"
+        printf '%s' "$_nonce" > "$_nonce_file"
+      fi
+
       next_story=$(awk -F'"' '
         /"passes"/ && /false/ { found=1 }
         /"title"/ && found    { print $4; exit }
@@ -223,6 +256,7 @@ if [[ -n "$issue_id" ]]; then
       if [[ -n "$next_story" ]]; then
         loop_hint="${loop_hint} Next story: ${next_story}"
       fi
+      loop_hint="${loop_hint} Emit <promise>DONE:${_nonce}</promise> when complete."
 
       context_parts+=("## Loop State"$'\n'"$loop_hint")
     fi

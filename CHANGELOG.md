@@ -1,5 +1,51 @@
 # Changelog
 
+## [1.5.0] - 2026-05-29
+
+### Fixed
+
+- **H4 — `hooks/stop.sh` + `hooks/session-start.sh`**: `<promise>DONE</promise>` signal is
+  now nonce-bound. On each loop resume, `session-start.sh` generates a stable per-session
+  nonce and writes it to `.multica/state/{issue_id}/done-nonce.txt`; the nonce is injected
+  into the `## Loop State` context section as `Emit <promise>DONE:{nonce}</promise> when
+  complete.` `stop.sh` checks for the matching `DONE:{nonce}` form when a nonce file is
+  present; plain `DONE` (without nonce) is rejected. Nonce file is removed on clean exit.
+  This closes the magic-string bypass identified in the internal review.
+
+- **H7 — `hooks/stop.sh`**: added `flock -x` advisory lock on
+  `.multica/state/{issue_id}/.multica.lock` before any state-file writes (`loop.json`,
+  `hitl-bounces.json`, `learnings.jsonl`). Gracefully degrades on systems without `flock`.
+
+- **H9 — `hooks/session-start.sh`**: runtime version check for multica CLI at session start.
+  If installed version is below `0.4.0`, injects a warning into `additionalContext` and logs
+  to `hook-errors.log`. Does not block the session.
+
+- **M4 — `bin/install.js`**: `--uninstall` now removes the `MULTICA_PLUGIN_ROOT` and
+  `MULTICA_AGENT_SESSION` export lines written to `~/.bashrc` / `~/.zshrc`. Uses the same
+  shell-profile detection as install; collapses blank lines left behind.
+
+- **M6 — `hooks/session-start.sh`**: stale-learning issue comments are now batched into a
+  single comment per calendar day (one `.marker` file per issue per day). Eliminates the
+  per-key per-resume comment flood.
+
+- **M9 — `hooks/stop.sh`**: notepad Working Memory prune (7-day cutoff) is now extracted
+  into a `prune_notepad()` function and called on every stop hook exit — not only on the
+  DONE path. Long-running sessions that never reach DONE are now also pruned.
+
+- **M5 — `hooks/hooks.json`**: dead artifact removed. The file was never read by `install.js`
+  or any other tool, and had drifted from the actual hook registration logic.
+
+### Changed
+
+- **`README.md`**: multica CLI minimum version corrected from `0.3.4` to `0.4.0` (matches
+  `KNOWN-LIMITATIONS.md` and the new runtime check).
+
+- **`.claude-plugin/marketplace.json`**: version synced to `1.5.0`.
+
+- **Branch protection**: `master` branch now requires all four CI jobs (`Bash syntax check`,
+  `shellcheck`, `Smoke tests`, `Node.js unit tests`) to pass before a push is accepted.
+  This closes the gap where CI-failing commits could be pushed directly to `master`.
+
 ## [1.4.0] - 2026-05-28
 
 ### Fixed (engineering quality / tech debt)

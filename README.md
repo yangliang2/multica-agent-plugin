@@ -73,7 +73,7 @@ See [docs/QUICKSTART.md](docs/QUICKSTART.md) for full setup instructions.
 
 | Component | Minimum Version |
 |-----------|----------------|
-| multica CLI | 0.3.4 |
+| multica CLI | 0.4.0 |
 | Claude Code | latest |
 | python3 | 3.8 |
 | git | 2.x |

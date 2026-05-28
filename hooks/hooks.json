@@ -1,7 +1,0 @@
-{
-  "hooks": {
-    "Stop": [{"type": "command", "command": "~/.claude/hooks/multica/stop.sh"}],
-    "PreToolUse": [{"type": "command", "command": "~/.claude/hooks/multica/pre-tool.sh"}],
-    "SessionStart": [{"type": "command", "command": "~/.claude/hooks/multica/session-start.sh", "matcher": "startup|clear|compact"}]
-  }
-}

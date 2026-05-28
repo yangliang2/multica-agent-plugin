@@ -53,6 +53,26 @@ dedup_hash() {
     | cut -c1-8
 }
 
+prune_notepad() {
+  local _notepad="${MULTICA_WORKDIR}/.multica/notepad.md"
+  [[ -f "$_notepad" ]] || return 0
+  local _cutoff
+  _cutoff=$(date -d '7 days ago' +%Y-%m-%dT 2>/dev/null || \
+            date -v-7d +%Y-%m-%dT 2>/dev/null || echo "")
+  [[ -n "$_cutoff" ]] || return 0
+  local _tmp
+  _tmp=$(mktemp "${_notepad}.XXXXXX")
+  awk -v cutoff="$_cutoff" '
+    /^## Working Memory/ { in_wm=1 }
+    /^## / && !/^## Working Memory/ { in_wm=0 }
+    in_wm && /^\[20[0-9][0-9]-/ {
+      ts=substr($0, 2, 19)
+      if (ts < cutoff) next
+    }
+    { print }
+  ' "$_notepad" > "$_tmp" && mv "$_tmp" "$_notepad" || rm -f "$_tmp"
+}
+
 MULTICA_WORKDIR="${MULTICA_WORKDIR:-$(pwd)}"
 STATE_ROOT="${MULTICA_WORKDIR}/.multica/state"
 HOOK_LOG="${MULTICA_WORKDIR}/.multica/logs/hook-errors.log"
@@ -122,17 +142,45 @@ if [[ "$active" != "true" ]]; then
   exit 0
 fi
 
+# H7: per-issue advisory flock to prevent concurrent stop-hook races on shared state files
+_LOCK_FILE="${ISSUE_STATE_DIR}/.multica.lock"
+mkdir -p "$ISSUE_STATE_DIR" 2>/dev/null || true
+if command -v flock >/dev/null 2>&1; then
+  exec 9>"$_LOCK_FILE"
+  flock -x 9
+fi
+
 done_signal=false
 
 if [[ -n "${CLAUDE_TOOL_OUTPUT:-}" ]]; then
-  if printf '%s' "$CLAUDE_TOOL_OUTPUT" | grep -qF '<promise>DONE</promise>'; then
+  if printf '%s' "$CLAUDE_TOOL_OUTPUT" | grep -qE '<promise>DONE(:[A-Za-z0-9]+)?</promise>'; then
     done_signal=true
   fi
 fi
 
 if [[ "$done_signal" == "false" && -n "${MULTICA_OUTPUT_FILE:-}" && -f "${MULTICA_OUTPUT_FILE}" ]]; then
-  if grep -qF '<promise>DONE</promise>' "$MULTICA_OUTPUT_FILE"; then
+  if grep -qE '<promise>DONE(:[A-Za-z0-9]+)?</promise>' "$MULTICA_OUTPUT_FILE"; then
     done_signal=true
+  fi
+fi
+
+# H4: nonce verification — if done-nonce.txt exists, require DONE:<nonce> in signal
+if [[ "$done_signal" == "true" ]]; then
+  _nonce_file="${ISSUE_STATE_DIR}/done-nonce.txt"
+  if [[ -f "$_nonce_file" ]]; then
+    _expected_nonce=$(cat "$_nonce_file")
+    _nonce_found=false
+    if [[ -n "${CLAUDE_TOOL_OUTPUT:-}" ]]; then
+      printf '%s' "$CLAUDE_TOOL_OUTPUT" | grep -qF "<promise>DONE:${_expected_nonce}</promise>" && _nonce_found=true
+    fi
+    if [[ "$_nonce_found" == "false" && -n "${MULTICA_OUTPUT_FILE:-}" && -f "${MULTICA_OUTPUT_FILE}" ]]; then
+      grep -qF "<promise>DONE:${_expected_nonce}</promise>" "$MULTICA_OUTPUT_FILE" && _nonce_found=true
+    fi
+    if [[ "$_nonce_found" == "false" ]]; then
+      log_error "DONE rejected: nonce mismatch (expected DONE:${_expected_nonce})"
+      echo "[stop.sh] DONE rejected — wrong nonce (emit <promise>DONE:${_expected_nonce}</promise>)" >&2
+      done_signal=false
+    fi
   fi
 fi
 
@@ -243,21 +291,178 @@ except Exception as e:
 fi
 
 if [[ "$done_signal" == "true" ]]; then
-  # Count committed learnings if possible
+  # ---------------------------------------------------------------------------
+  # Learnings routing: dispatch by scope to correct storage path
+  # L1 (workspace) → multica workspace context field
+  # L2 (repo)      → {checkout_dir}/.multica/learnings.jsonl (git committed)
+  # L3 (issue)     → $MULTICA_WORKDIR/.multica/learnings.jsonl (current behavior)
+  # ---------------------------------------------------------------------------
+  _learnings="${MULTICA_WORKDIR}/.multica/learnings.jsonl"
   _learnings_count=0
   _new_learning_keys=""
-  _learnings="${MULTICA_WORKDIR}/.multica/learnings.jsonl"
-  if [[ -f "$_learnings" ]]; then
-    _learnings_count=$(wc -l < "$_learnings" 2>/dev/null || echo 0)
 
-    # Stage learnings now so we can inspect new keys before committing
+  if [[ -f "$_learnings" ]] && command -v python3 >/dev/null 2>&1; then
+    _learnings_count=$(awk 'END{print NR}' "$_learnings" 2>/dev/null || echo 0)
+
+    # Find checked-out repo directories (immediate subdirs with .git or .multica)
+    _repo_dirs=()
+    while IFS= read -r -d '' _d; do
+      _repo_dirs+=("$_d")
+    done < <(find "$MULTICA_WORKDIR" -maxdepth 2 -name ".git" -type d -print0 2>/dev/null               | sed -z 's|/.git||')
+
+    # Route learnings by scope
+    python3 - "$_learnings" "$MULTICA_WORKDIR" "${_repo_dirs[@]+"${_repo_dirs[@]}"}" <<'SCOPE_PY'
+import json, sys, os, re
+from pathlib import Path
+
+learnings_file = sys.argv[1]
+workdir = sys.argv[2]
+repo_dirs = sys.argv[3:]
+
+KEY_RE = re.compile(r'^[A-Za-z0-9._-]{1,64}$')
+VALID_SCOPES = {'workspace', 'repo', 'issue'}
+
+workspace_entries = []
+repo_entries = {}   # repo_url -> [entries]
+issue_entries = []  # default (no scope or scope=issue)
+
+with open(learnings_file) as f:
+    for line in f:
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            e = json.loads(line)
+        except Exception:
+            continue
+        scope = e.get('scope', 'issue')
+        if scope not in VALID_SCOPES:
+            scope = 'issue'
+        if scope == 'workspace':
+            workspace_entries.append(e)
+        elif scope == 'repo':
+            repo = e.get('repo', '')
+            if repo:
+                repo_entries.setdefault(repo, []).append(e)
+        else:
+            issue_entries.append(e)
+
+# L1: emit workspace learnings as [learning:*] lines to stdout for bash to capture
+for e in workspace_entries:
+    key = e.get('key', '')
+    insight = e.get('insight', '')
+    conf = e.get('confidence', 0)
+    if key and insight and KEY_RE.match(key):
+        print(f"WORKSPACE_LEARNING:{key}:{conf}:{insight}")
+
+# L2: write repo-scoped learnings to repo checkout dirs
+for repo_url, entries in repo_entries.items():
+    # Find matching repo dir by checking remote URL
+    target_dir = None
+    for rd in repo_dirs:
+        try:
+            import subprocess
+            result = subprocess.run(
+                ['git', '-C', rd, 'remote', 'get-url', 'origin'],
+                capture_output=True, text=True, timeout=5)
+            if result.returncode == 0 and result.stdout.strip() == repo_url:
+                target_dir = rd
+                break
+        except Exception:
+            continue
+    if not target_dir:
+        # No matching checkout found — keep in issue-level file
+        issue_entries.extend(entries)
+        continue
+    repo_learnings = Path(target_dir) / '.multica' / 'learnings.jsonl'
+    repo_learnings.parent.mkdir(parents=True, exist_ok=True)
+    with open(repo_learnings, 'a') as f:
+        for e in entries:
+            f.write(json.dumps(e) + '
+')
+    print(f"REPO_LEARNINGS_DIR:{target_dir}")
+
+# L3: rewrite issue-scoped learnings back (remove workspace/repo entries)
+if len(issue_entries) != sum(1 for _ in open(learnings_file) if _.strip()):
+    tmp = learnings_file + '.tmp'
+    with open(tmp, 'w') as f:
+        for e in issue_entries:
+            f.write(json.dumps(e) + '
+')
+    os.replace(tmp, learnings_file)
+    print("REWRITTEN_ISSUE_LEARNINGS")
+SCOPE_PY
+
+    # Parse routing output
+    _workspace_learnings=()
+    _repo_learnings_dirs=()
+    while IFS= read -r _sline; do
+      case "$_sline" in
+        WORKSPACE_LEARNING:*)
+          _workspace_learnings+=("${_sline#WORKSPACE_LEARNING:}")
+          ;;
+        REPO_LEARNINGS_DIR:*)
+          _repo_learnings_dirs+=("${_sline#REPO_LEARNINGS_DIR:}")
+          ;;
+      esac
+    done < <(python3 - "$_learnings" "$MULTICA_WORKDIR" "${_repo_dirs[@]+"${_repo_dirs[@]}"}" <<'SCOPE_PY2'
+import json, sys, os, re
+from pathlib import Path
+SCOPE_PY2
+    # (output already processed above; this is a dummy to close the loop)
+    true)
+
+    # L1: append workspace learnings to multica workspace context
+    if [[ ${#_workspace_learnings[@]} -gt 0 ]] && command -v multica >/dev/null 2>&1; then
+      _ws_context=$(multica workspace get --output json 2>/dev/null | python3 -c "
+import json,sys
+try: print(json.load(sys.stdin).get('context',''))
+except: print('')
+" 2>/dev/null || echo "")
+      _new_ws_lines=""
+      for _wl in "${_workspace_learnings[@]}"; do
+        _wl_key="${_wl%%:*}"
+        _wl_rest="${_wl#*:}"
+        _wl_conf="${_wl_rest%%:*}"
+        _wl_insight="${_wl_rest#*:}"
+        if ! echo "$_ws_context" | grep -qF "[learning:${_wl_key}]"; then
+          _new_ws_lines="${_new_ws_lines}[learning:${_wl_key}] (conf:${_wl_conf}) ${_wl_insight}"$'
+'
+        fi
+      done
+      if [[ -n "$_new_ws_lines" ]]; then
+        printf '%s
+%s' "$_ws_context" "$_new_ws_lines"           | multica workspace update --context-stdin           2>/dev/null || log_error "failed to update workspace context with learnings"
+      fi
+    fi
+
+    # L2: git commit repo-level learnings in each repo dir
+    for _rdir in "${_repo_learnings_dirs[@]+"${_repo_learnings_dirs[@]}"}"; do
+      _rl="${_rdir}/.multica/learnings.jsonl"
+      if [[ -f "$_rl" ]] && git -C "$_rdir" rev-parse --git-dir >/dev/null 2>&1; then
+        git -C "$_rdir" add "$_rl" 2>/dev/null || true
+        if ! git -C "$_rdir" diff --cached --quiet -- "$_rl" 2>/dev/null; then
+          git -C "$_rdir" commit -- "$_rl"             -m "chore(knowledge): update repo learnings [skip ci]"             2>/dev/null || log_error "failed to git commit repo learnings in ${_rdir}"
+        fi
+      fi
+    done
+
+    # L3: git commit issue-level learnings (existing behavior)
     if git -C "$MULTICA_WORKDIR" rev-parse --git-dir >/dev/null 2>&1; then
       git -C "$MULTICA_WORKDIR" add "$_learnings" 2>/dev/null || true
       if ! git -C "$MULTICA_WORKDIR" diff --cached --quiet -- "$_learnings" 2>/dev/null; then
-        _new_learning_keys=$(git -C "$MULTICA_WORKDIR" diff --cached -- "$_learnings" 2>/dev/null \
-          | grep '^+' | grep -v '^+++' \
-          | awk -F'"' '/"key"/{print $4}' \
-          | tr '\n' ',' | sed 's/,$//')
+        _new_learning_keys=$(git -C "$MULTICA_WORKDIR" diff --cached -- "$_learnings" 2>/dev/null           | grep '^+' | grep -v '^+++'           | python3 -c "
+import json, sys
+for line in sys.stdin:
+    line = line.strip()
+    if not line: continue
+    try:
+        e = json.loads(line)
+        k = e.get('key','')
+        if k: print(k)
+    except: pass
+" 2>/dev/null | tr '
+' ',' | sed 's/,$//')
       fi
     fi
   fi
@@ -283,6 +488,7 @@ print(json.dumps(d))
     | sed 's/"active":[[:space:]]*true/"active": false/' \
     | sed "s/\"phase\":[[:space:]]*\"[^\"]*\"/\"phase\": \"complete\"/")
   atomic_write "$LOOP_JSON" "$updated_json"
+  rm -f "${ISSUE_STATE_DIR}/done-nonce.txt"
 
   if [[ -f "$_learnings" ]]; then
     if git -C "$MULTICA_WORKDIR" rev-parse --git-dir >/dev/null 2>&1; then
@@ -294,23 +500,7 @@ print(json.dumps(d))
     fi
   fi
 
-  _notepad="${MULTICA_WORKDIR}/.multica/notepad.md"
-  if [[ -f "$_notepad" ]]; then
-    _cutoff=$(date -d '7 days ago' +%Y-%m-%dT 2>/dev/null || \
-              date -v-7d +%Y-%m-%dT 2>/dev/null || echo "")
-    if [[ -n "$_cutoff" ]]; then
-      _tmp=$(mktemp "${_notepad}.XXXXXX")
-      awk -v cutoff="$_cutoff" '
-        /^## Working Memory/ { in_wm=1 }
-        /^## / && !/^## Working Memory/ { in_wm=0 }
-        in_wm && /^\[20[0-9][0-9]-/ {
-          ts=substr($0, 2, 19)
-          if (ts < cutoff) next
-        }
-        { print }
-      ' "$_notepad" > "$_tmp" && mv "$_tmp" "$_notepad" || rm -f "$_tmp"
-    fi
-  fi
+  prune_notepad
 
   squad_leader_audit
 
@@ -355,6 +545,8 @@ if [[ -z "$existing" ]]; then
     --content "[checkpoint:${hash}] Loop active at iteration ${iteration}, phase=${phase}. Continuing." \
     2>/dev/null || log_error "failed to post loop-complete comment"
 fi
+
+prune_notepad
 
 squad_leader_audit
 

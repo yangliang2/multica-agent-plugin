@@ -231,6 +231,30 @@ function verify() {
   console.log('');
 }
 
+function removeFromShellProfile() {
+  const shell = detectShell();
+  const profile = getShellProfile(shell);
+  if (!fs.existsSync(profile)) return;
+  try {
+    let content = fs.readFileSync(profile, 'utf8');
+    const before = content;
+    // Remove the export lines written by writePluginRoot()
+    content = content.replace(/\nexport MULTICA_PLUGIN_ROOT="[^"]*"\n?/g, '\n');
+    content = content.replace(/\nexport MULTICA_AGENT_SESSION=0[^\n]*\n?/g, '\n');
+    // Collapse runs of blank lines left behind
+    content = content.replace(/\n{3,}/g, '\n\n');
+    if (content !== before) {
+      fs.writeFileSync(profile, content, 'utf8');
+      ok(`Removed MULTICA exports from ${profile}`);
+    } else {
+      ok(`No MULTICA exports found in ${profile}`);
+    }
+  } catch (e) {
+    warn(`Could not clean ${profile}: ${e.message}`);
+    warn(`Manually remove MULTICA_PLUGIN_ROOT and MULTICA_AGENT_SESSION lines from ${profile}`);
+  }
+}
+
 function uninstall() {
   console.log(`\n${B}multica-agent-plugin — uninstall${X}\n`);
 
@@ -254,6 +278,9 @@ function uninstall() {
     writeSettings(settings);
     ok(`Hooks removed from ${SETTINGS_PATH}`);
   }
+
+  // M4: remove export lines written to shell profile
+  removeFromShellProfile();
   console.log('');
 }
 

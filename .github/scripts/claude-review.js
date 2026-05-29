@@ -83,21 +83,34 @@ function claudeApi(messages, maxTokens = 4096) {
 // ── Main ──────────────────────────────────────────────────────────────────────
 
 async function main() {
-  // 1. Create a pending Check Run
-  const checkRes = await ghApi('/check-runs', 'POST', {
-    name: 'Claude Code Review',
-    head_sha: HEAD_SHA,
-    status: 'in_progress',
-    started_at: new Date().toISOString(),
-    output: { title: 'Reviewing…', summary: 'Claude is analyzing the diff.' },
-  });
-  const checkData = JSON.parse(checkRes.body);
-  const checkRunId = checkData.id;
-  if (!checkRunId) {
-    console.error('Failed to create check run:', checkRes.body);
-    process.exit(1);
+  // 1. Create or reuse a pending Check Run (avoid duplicate check runs on same commit)
+  let checkRunId;
+  const existingRes = await ghApi(`/commits/${HEAD_SHA}/check-runs?check_name=Claude+Code+Review`);
+  const existing = JSON.parse(existingRes.body);
+  const inProgress = (existing.check_runs || []).find(r => r.status === 'in_progress' || r.status === 'queued');
+  if (inProgress) {
+    checkRunId = inProgress.id;
+    await ghApi(`/check-runs/${checkRunId}`, 'PATCH', {
+      status: 'in_progress',
+      output: { title: 'Reviewing…', summary: 'Claude is analyzing the diff.' },
+    });
+    console.log(`Reusing existing check run: ${checkRunId}`);
+  } else {
+    const checkRes = await ghApi('/check-runs', 'POST', {
+      name: 'Claude Code Review',
+      head_sha: HEAD_SHA,
+      status: 'in_progress',
+      started_at: new Date().toISOString(),
+      output: { title: 'Reviewing…', summary: 'Claude is analyzing the diff.' },
+    });
+    const checkData = JSON.parse(checkRes.body);
+    checkRunId = checkData.id;
+    if (!checkRunId) {
+      console.error('Failed to create check run:', checkRes.body);
+      process.exit(1);
+    }
+    console.log(`Check run created: ${checkRunId}`);
   }
-  console.log(`Check run created: ${checkRunId}`);
 
   // 2. Fetch PR diff
   const diffRes = await request({

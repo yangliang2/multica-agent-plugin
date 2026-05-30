@@ -29,8 +29,10 @@ jobs:
       - name: Run Claude review
         id: review
         run: |
+          set +e
           node .github/scripts/claude-review.js
           rc=$?
+          set -e
           echo "exit_code=$rc" >> "$GITHUB_OUTPUT"
           if [[ -f /tmp/review-findings.json ]]; then
             SEV=$(python3 -c "import json; print(json.load(open('/tmp/review-findings.json')).get('severity','LOW'))")

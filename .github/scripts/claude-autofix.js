@@ -6,6 +6,7 @@
 const https = require('https');
 const http = require('http');
 const fs = require('fs');
+const path = require('path');
 const { execSync } = require('child_process');
 
 const ANTHROPIC_AUTH_TOKEN = process.env.ANTHROPIC_AUTH_TOKEN || process.env.ANTHROPIC_API_KEY || '';
@@ -59,6 +60,28 @@ function claudeApi(messages, maxTokens = 4096) {
 }
 
 const readFile = (p) => { try { return fs.readFileSync(p, 'utf8'); } catch { return ''; } };
+const REPO_ROOT = process.cwd();
+const ALLOWLIST_PREFIXES = ['hooks/', 'tools/', 'bin/', 'tests/', '.github/'];
+
+function randomDelimiter() {
+  return `EOF_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+}
+
+function writeMultilineEnv(file, key, value) {
+  const delimiter = randomDelimiter();
+  fs.appendFileSync(file, `${key}<<${delimiter}\n${String(value)}\n${delimiter}\n`);
+}
+
+function resolveAllowedRepoPath(relPath) {
+  if (typeof relPath !== 'string' || !relPath.trim()) return null;
+  const normalized = relPath.replace(/\\/g, '/');
+  if (!ALLOWLIST_PREFIXES.some(p => normalized.startsWith(p))) return null;
+  const abs = path.resolve(REPO_ROOT, normalized);
+  const rel = path.relative(REPO_ROOT, abs).replace(/\\/g, '/');
+  if (rel.startsWith('..') || path.isAbsolute(rel)) return null;
+  if (!ALLOWLIST_PREFIXES.some(p => rel.startsWith(p))) return null;
+  return { abs, rel };
+}
 
 async function main() {
   // 1. Load review findings
@@ -66,9 +89,7 @@ async function main() {
   const issues = (findings.issues || []).filter(i => ['CRITICAL', 'HIGH'].includes(i.severity));
 
   const env = process.env.GITHUB_ENV || '/tmp/env';
-  const writeEnv = (key, value) => {
-    fs.appendFileSync(env, `${key}<<EOF\n${String(value)}\nEOF\n`);
-  };
+  const writeEnv = (key, value) => writeMultilineEnv(env, key, value);
 
   if (issues.length === 0) {
     console.log('No CRITICAL/HIGH issues to fix.');
@@ -147,13 +168,15 @@ Rules:
   let applied = 0;
   const modifiedFiles = [];
   for (const p of (fix.patches || [])) {
-    const content = readFile(p.file);
-    if (!content) { console.log(`  SKIP ${p.file}: not found`); continue; }
-    if (!content.includes(p.old)) { console.log(`  SKIP ${p.file}: old string not found`); continue; }
-    fs.writeFileSync(p.file, content.replace(p.old, p.new), 'utf8');
-    console.log(`  PATCHED ${p.file}`);
+    const resolved = resolveAllowedRepoPath(p.file);
+    if (!resolved) { console.log(`  SKIP ${p.file}: path not allowed`); continue; }
+    const content = readFile(resolved.abs);
+    if (!content) { console.log(`  SKIP ${resolved.rel}: not found`); continue; }
+    if (!content.includes(p.old)) { console.log(`  SKIP ${resolved.rel}: old string not found`); continue; }
+    fs.writeFileSync(resolved.abs, content.replace(p.old, p.new), 'utf8');
+    console.log(`  PATCHED ${resolved.rel}`);
     applied++;
-    if (!modifiedFiles.includes(p.file)) modifiedFiles.push(p.file);
+    if (!modifiedFiles.includes(resolved.rel)) modifiedFiles.push(resolved.rel);
   }
 
   if (applied === 0) {

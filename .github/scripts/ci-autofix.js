@@ -6,15 +6,34 @@
 const https = require('https');
 const http = require('http');
 const fs = require('fs');
+const path = require('path');
 
 const failedLog = process.env.FAILED_LOG || '';
 const localShellcheck = process.env.LOCAL_SHELLCHECK || '';
 const apiKey = process.env.ANTHROPIC_AUTH_TOKEN || process.env.ANTHROPIC_API_KEY || '';
 const baseUrl = process.env.ANTHROPIC_BASE_URL || 'https://api.anthropic.com';
 const envFile = process.env.GITHUB_ENV || '/tmp/env';
+const REPO_ROOT = process.cwd();
+const ALLOWLIST_PREFIXES = ['hooks/', 'tools/', 'bin/', 'tests/', '.github/'];
+
+function randomDelimiter() {
+  return `EOF_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+}
 
 function writeEnv(key, value) {
-  fs.appendFileSync(envFile, `${key}<<EOF\n${String(value)}\nEOF\n`);
+  const delimiter = randomDelimiter();
+  fs.appendFileSync(envFile, `${key}<<${delimiter}\n${String(value)}\n${delimiter}\n`);
+}
+
+function resolveAllowedRepoPath(relPath) {
+  if (typeof relPath !== 'string' || !relPath.trim()) return null;
+  const normalized = relPath.replace(/\\/g, '/');
+  if (!ALLOWLIST_PREFIXES.some(p => normalized.startsWith(p))) return null;
+  const abs = path.resolve(REPO_ROOT, normalized);
+  const rel = path.relative(REPO_ROOT, abs).replace(/\\/g, '/');
+  if (rel.startsWith('..') || path.isAbsolute(rel)) return null;
+  if (!ALLOWLIST_PREFIXES.some(p => rel.startsWith(p))) return null;
+  return { abs, rel };
 }
 
 async function main() {
@@ -113,11 +132,13 @@ Rules:
   const modifiedFiles = [];
   for (const p of (fix.patches || [])) {
     try {
-      const content = fs.readFileSync(p.file, 'utf8');
+      const resolved = resolveAllowedRepoPath(p.file);
+      if (!resolved) continue;
+      const content = fs.readFileSync(resolved.abs, 'utf8');
       if (!content.includes(p.old)) continue;
-      fs.writeFileSync(p.file, content.replace(p.old, p.new), 'utf8');
+      fs.writeFileSync(resolved.abs, content.replace(p.old, p.new), 'utf8');
       applied += 1;
-      if (!modifiedFiles.includes(p.file)) modifiedFiles.push(p.file);
+      if (!modifiedFiles.includes(resolved.rel)) modifiedFiles.push(resolved.rel);
     } catch {
       // ignore file-level failures
     }

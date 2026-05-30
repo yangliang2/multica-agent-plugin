@@ -1,5 +1,29 @@
 # Changelog
 
+## [1.8.0] - 2026-05-30
+
+### Fixed
+
+- **GitHub Actions Node.js 24 migration**: pinned all actions to latest v4
+  patch releases (`actions/checkout@v4.3.1`, `actions/setup-node@v4.4.0`,
+  `actions/upload-artifact@v4.6.2`, `actions/download-artifact@v4.3.0`)
+  across `ci.yml`, `code-review.yml`, and `auto-fix.yml`. Avoids the
+  forced Node.js 24 switch on 2026-06-16.
+
+### Added
+
+- **`tests/smoke/test-stop-evidence-structure.sh`**: 4 cases covering H3
+  evidence content validation — freeform text rejected, `exit_code:` /
+  `summary:` fields accepted, empty file still rejected.
+
+- **`tests/smoke/test-pretool-rate-limit.sh`**: 3 cases covering M8
+  rate-limit — rate file created on first blocked call, not updated within
+  60s window, not created in non-daemon session.
+
+- **`tests/smoke/test-session-start-size-limit.sh`**: 3 cases covering M10
+  learnings size guard — normal file injected, >1000 lines skipped with
+  warning in context, output remains valid JSON.
+
 ## [1.7.0] - 2026-05-30
 
 ### Fixed

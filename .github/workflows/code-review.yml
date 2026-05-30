@@ -18,11 +18,11 @@ jobs:
       patches_needed: ${{ steps.review.outputs.patches_needed }}
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4.3.1
         with:
           fetch-depth: 0
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v4.4.0
         with:
           node-version: "20"
 
@@ -51,7 +51,7 @@ jobs:
 
       - name: Upload findings
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v4.6.2
         with:
           name: review-findings
           path: /tmp/review-findings.json
@@ -67,13 +67,13 @@ jobs:
       pull-requests: write
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4.3.1
         with:
           ref: ${{ github.event.pull_request.head.ref }}
           fetch-depth: 0
           token: ${{ secrets.GITHUB_TOKEN }}
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v4.4.0
         with:
           node-version: "20"
 
@@ -81,7 +81,7 @@ jobs:
         run: sudo apt-get install -y shellcheck
 
       - name: Download review findings
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v4.3.0
         with:
           name: review-findings
           path: /tmp/

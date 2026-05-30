@@ -7,6 +7,7 @@ const https = require('https');
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
+const crypto = require('crypto');
 const { execSync } = require('child_process');
 
 const ANTHROPIC_AUTH_TOKEN = process.env.ANTHROPIC_AUTH_TOKEN || process.env.ANTHROPIC_API_KEY || '';
@@ -61,10 +62,11 @@ function claudeApi(messages, maxTokens = 4096) {
 
 const readFile = (p) => { try { return fs.readFileSync(p, 'utf8'); } catch { return ''; } };
 const REPO_ROOT = process.cwd();
-const ALLOWLIST_PREFIXES = ['hooks/', 'tools/', 'bin/', 'tests/', '.github/'];
+const REPO_ROOT_REAL = fs.realpathSync(REPO_ROOT);
+const ALLOWLIST_PREFIXES = ['hooks/', 'tools/', 'bin/', 'tests/'];
 
 function randomDelimiter() {
-  return `EOF_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+  return `EOF_${crypto.randomBytes(8).toString('hex')}`;
 }
 
 function writeMultilineEnv(file, key, value) {
@@ -72,14 +74,34 @@ function writeMultilineEnv(file, key, value) {
   fs.appendFileSync(file, `${key}<<${delimiter}\n${String(value)}\n${delimiter}\n`);
 }
 
+function isAllowedRelPath(rel) {
+  return !rel.startsWith('..') && !path.isAbsolute(rel) &&
+    ALLOWLIST_PREFIXES.some(prefix => rel.startsWith(prefix));
+}
+
 function resolveAllowedRepoPath(relPath) {
   if (typeof relPath !== 'string' || !relPath.trim()) return null;
   const normalized = relPath.replace(/\\/g, '/');
-  if (!ALLOWLIST_PREFIXES.some(p => normalized.startsWith(p))) return null;
+  if (!isAllowedRelPath(normalized)) return null;
+
   const abs = path.resolve(REPO_ROOT, normalized);
   const rel = path.relative(REPO_ROOT, abs).replace(/\\/g, '/');
-  if (rel.startsWith('..') || path.isAbsolute(rel)) return null;
-  if (!ALLOWLIST_PREFIXES.some(p => rel.startsWith(p))) return null;
+  if (!isAllowedRelPath(rel)) return null;
+
+  try {
+    const stat = fs.lstatSync(abs);
+    if (stat.isSymbolicLink() || !stat.isFile()) return null;
+
+    const real = fs.realpathSync(abs);
+    const realStat = fs.statSync(real);
+    if (!realStat.isFile()) return null;
+    const realRel = path.relative(REPO_ROOT_REAL, real).replace(/\\/g, '/');
+    if (!isAllowedRelPath(realRel)) return null;
+    if (realRel !== rel) return null;
+  } catch {
+    return null;
+  }
+
   return { abs, rel };
 }
 
@@ -103,7 +125,8 @@ async function main() {
   const affectedFiles = [...new Set(issues.map(i => i.file))];
   const fileContents = {};
   for (const f of affectedFiles) {
-    fileContents[f] = readFile(f);
+    const resolved = resolveAllowedRepoPath(f);
+    fileContents[f] = resolved ? readFile(resolved.abs) : '';
   }
 
   // 3. Build prompt
@@ -166,17 +189,31 @@ Rules:
 
   // 4. Apply patches
   let applied = 0;
+  const failures = [];
   const modifiedFiles = [];
+  const originalContents = new Map();
   for (const p of (fix.patches || [])) {
     const resolved = resolveAllowedRepoPath(p.file);
-    if (!resolved) { console.log(`  SKIP ${p.file}: path not allowed`); continue; }
+    if (!resolved) { failures.push(`${p.file || '<missing>'}: path not allowed`); continue; }
     const content = readFile(resolved.abs);
-    if (!content) { console.log(`  SKIP ${resolved.rel}: not found`); continue; }
-    if (!content.includes(p.old)) { console.log(`  SKIP ${resolved.rel}: old string not found`); continue; }
+    if (!content) { failures.push(`${resolved.rel}: not found`); continue; }
+    if (!content.includes(p.old)) { failures.push(`${resolved.rel}: old string not found`); continue; }
+    if (!originalContents.has(resolved.abs)) originalContents.set(resolved.abs, content);
     fs.writeFileSync(resolved.abs, content.replace(p.old, p.new), 'utf8');
     console.log(`  PATCHED ${resolved.rel}`);
     applied++;
     if (!modifiedFiles.includes(resolved.rel)) modifiedFiles.push(resolved.rel);
+  }
+
+  if (failures.length > 0) {
+    for (const [abs, content] of originalContents) {
+      fs.writeFileSync(abs, content, 'utf8');
+    }
+    console.error(`Failed to apply ${failures.length} patch(es): ${failures.join('; ')}`);
+    fs.appendFileSync(env, `PATCHES_APPLIED=0\n`);
+    writeEnv('FIX_ANALYSIS', `auto-fix failed: ${failures.join('; ')}`);
+    writeEnv('MODIFIED_FILES', '');
+    process.exit(1);
   }
 
   if (applied === 0) {
@@ -188,10 +225,24 @@ Rules:
   }
 
   // 5. Verify
+  const verifyEnv = {
+    PATH: process.env.PATH || '',
+    HOME: process.env.HOME || '',
+    SHELL: process.env.SHELL || '/bin/bash',
+    USER: process.env.USER || '',
+    TMPDIR: process.env.TMPDIR || '/tmp',
+    CI: process.env.CI || 'true',
+    TERM: process.env.TERM || 'dumb',
+    GITHUB_ENV: '/tmp/verify-env-blocked',
+    GITHUB_PATH: '/tmp/verify-path-blocked',
+    GITHUB_OUTPUT: '/tmp/verify-output-blocked',
+    GITHUB_STATE: '/tmp/verify-state-blocked',
+    GITHUB_STEP_SUMMARY: '/tmp/verify-step-summary-blocked',
+  };
   try {
-    execSync('bash -n hooks/stop.sh hooks/session-start.sh hooks/pre-tool.sh', { stdio: 'inherit' });
-    execSync('shellcheck -S warning hooks/*.sh tools/*.sh uninstall.sh', { stdio: 'inherit' });
-    execSync('npm test', { stdio: 'inherit' });
+    execSync('bash -n hooks/stop.sh hooks/session-start.sh hooks/pre-tool.sh', { stdio: 'inherit', env: verifyEnv });
+    execSync('shellcheck -S warning hooks/*.sh tools/*.sh uninstall.sh', { stdio: 'inherit', env: verifyEnv });
+    execSync('npm test', { stdio: 'inherit', env: verifyEnv });
     console.log('Verification passed.');
   } catch (e) {
     console.error('Verification failed — reverting patches');

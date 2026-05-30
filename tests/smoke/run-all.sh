@@ -42,6 +42,7 @@ run_test "test-pretool-rate-limit.sh"
 run_test "test-session-start-size-limit.sh"
 run_test "test-static-analysis.sh"
 run_test "test-shell-injection.sh"
+run_test "test-autofix-guards.sh"
 
 echo ""
 echo "Results: ${PASS} passed, ${FAIL} failed, ${SKIP} skipped"

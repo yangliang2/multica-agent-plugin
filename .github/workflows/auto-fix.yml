@@ -16,12 +16,20 @@ jobs:
       pull-requests: write
 
     steps:
+      - name: Checkout trusted automation
+        uses: actions/checkout@v4.3.1
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          fetch-depth: 0
+          path: trusted
+
       - name: Checkout PR branch
         uses: actions/checkout@v4.3.1
         with:
           ref: ${{ github.event.workflow_run.head_sha }}
           fetch-depth: 0
-          token: ${{ secrets.GITHUB_TOKEN }}
+          path: pr
+          persist-credentials: false
 
       - uses: actions/setup-node@v4.4.0
         with:
@@ -33,80 +41,38 @@ jobs:
       - name: Collect failure logs
         id: logs
         run: |
-          RUN_ID="${{ github.event.workflow_run.id }}"
-          REPO="${{ github.repository }}"
-
-          # Fetch failed job logs via gh CLI
-          FAILED_LOG=$(gh run view "$RUN_ID" --log-failed 2>&1 | head -200 || true)
-          echo "FAILED_LOG<<EOF_MARKER" >> "$GITHUB_ENV"
-          echo "$FAILED_LOG" >> "$GITHUB_ENV"
-          echo "EOF_MARKER" >> "$GITHUB_ENV"
+          gh run view "$RUN_ID" -R "$GITHUB_REPOSITORY" --log-failed 2>&1 | head -200 > /tmp/failed-log.txt || true
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RUN_ID: ${{ github.event.workflow_run.id }}
 
       - name: Run local checks and collect output
         id: local_checks
+        working-directory: pr
         run: |
-          LOCAL=$(shellcheck -S warning hooks/*.sh tools/*.sh uninstall.sh 2>&1 || true)
-          echo "LOCAL_SHELLCHECK<<EOF_MARKER" >> "$GITHUB_ENV"
-          echo "$LOCAL" >> "$GITHUB_ENV"
-          echo "EOF_MARKER" >> "$GITHUB_ENV"
+          shellcheck -S warning hooks/*.sh tools/*.sh uninstall.sh > /tmp/local-shellcheck.txt 2>&1 || true
 
       - name: Call Claude API for fix
         id: claude_fix
-        run: node .github/scripts/ci-autofix.js
+        working-directory: pr
+        continue-on-error: true
+        run: node ../trusted/.github/scripts/ci-autofix.js
         env:
           ANTHROPIC_AUTH_TOKEN: ${{ secrets.ANTHROPIC_AUTH_TOKEN }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           ANTHROPIC_BASE_URL: ${{ secrets.ANTHROPIC_BASE_URL }}
-          FAILED_LOG: ${{ env.FAILED_LOG }}
-          LOCAL_SHELLCHECK: ${{ env.LOCAL_SHELLCHECK }}
-
-      - name: Apply patches
-        id: apply
-        run: |
-          python3 - <<'PYEOF'
-          import json, sys, os
-
-          fix_path = '/tmp/claude-fix.json'
-          if not os.path.exists(fix_path):
-              print("No fix file found — nothing to apply")
-              sys.exit(0)
-
-          with open(fix_path) as f:
-              fix = json.load(f)
-
-          patches = fix.get('patches', [])
-          print(f"Analysis: {fix.get('analysis','')}")
-          print(f"Applying {len(patches)} patch(es)")
-
-          applied = 0
-          for p in patches:
-              fpath = p.get('file', '')
-              old = p.get('old', '')
-              new = p.get('new', '')
-              if not fpath or not old:
-                  continue
-              try:
-                  content = open(fpath).read()
-                  if old not in content:
-                      print(f"  SKIP {fpath}: old string not found")
-                      continue
-                  content = content.replace(old, new, 1)
-                  open(fpath, 'w').write(content)
-                  print(f"  PATCHED {fpath}")
-                  applied += 1
-              except Exception as e:
-                  print(f"  ERROR {fpath}: {e}")
-
-          print(f"Applied {applied}/{len(patches)} patches")
-          with open(os.environ['GITHUB_ENV'], 'a') as f:
-              f.write(f"PATCHES_APPLIED={applied}\n")
-              f.write(f"FIX_ANALYSIS={fix.get('analysis','auto-fix')}\n")
-          PYEOF
+          FAILED_LOG_FILE: /tmp/failed-log.txt
+          LOCAL_SHELLCHECK_FILE: /tmp/local-shellcheck.txt
 
       - name: Verify fix locally
         if: env.PATCHES_APPLIED != '0'
+        working-directory: pr
+        env:
+          GITHUB_ENV: /tmp/verify-env-blocked
+          GITHUB_PATH: /tmp/verify-path-blocked
+          GITHUB_OUTPUT: /tmp/verify-output-blocked
+          GITHUB_STATE: /tmp/verify-state-blocked
+          GITHUB_STEP_SUMMARY: /tmp/verify-step-summary-blocked
         run: |
           bash -n hooks/stop.sh hooks/session-start.sh hooks/pre-tool.sh
           shellcheck -S warning hooks/*.sh tools/*.sh uninstall.sh
@@ -114,11 +80,15 @@ jobs:
 
       - name: Commit and push fix
         if: env.PATCHES_APPLIED != '0'
+        working-directory: pr
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           FIX_ANALYSIS: ${{ env.FIX_ANALYSIS }}
           MODIFIED_FILES: ${{ env.MODIFIED_FILES }}
+          PR_BRANCH: ${{ github.event.workflow_run.head_branch }}
         run: |
+          git check-ref-format --branch "$PR_BRANCH"
+          git remote set-url origin "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           while IFS= read -r f; do
@@ -132,15 +102,17 @@ jobs:
           Run: ${{ github.event.workflow_run.id }}
           EOF
           git commit -F /tmp/commit-msg.txt
-          git push origin HEAD:${{ github.event.workflow_run.head_branch }}
+          git push origin "HEAD:${PR_BRANCH}"
 
       - name: Comment on PR if fix applied
         if: env.PATCHES_APPLIED != '0'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           FIX_ANALYSIS: ${{ env.FIX_ANALYSIS }}
+          PR_BRANCH: ${{ github.event.workflow_run.head_branch }}
         run: |
-          PR_NUM=$(gh pr list --head "${{ github.event.workflow_run.head_branch }}" --json number --jq '.[0].number' 2>/dev/null || echo "")
+          git check-ref-format --branch "$PR_BRANCH"
+          PR_NUM=$(gh pr list -R "$GITHUB_REPOSITORY" --head "$PR_BRANCH" --json number --jq '.[0].number' 2>/dev/null || echo "")
           if [[ -n "$PR_NUM" ]]; then
             BODY=$(cat <<EOF
             🤖 **Auto-fix applied** — CI failure was detected and a fix was pushed automatically.
@@ -150,7 +122,7 @@ jobs:
             Re-running CI on the new commit. Review the changes before merging.
             EOF
             )
-            gh pr comment "$PR_NUM" --body "$BODY"
+            gh pr comment -R "$GITHUB_REPOSITORY" "$PR_NUM" --body "$BODY"
           fi
 
       - name: Comment on PR if no fix found
@@ -158,8 +130,10 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           FIX_ANALYSIS: ${{ env.FIX_ANALYSIS }}
+          PR_BRANCH: ${{ github.event.workflow_run.head_branch }}
         run: |
-          PR_NUM=$(gh pr list --head "${{ github.event.workflow_run.head_branch }}" --json number --jq '.[0].number' 2>/dev/null || echo "")
+          git check-ref-format --branch "$PR_BRANCH"
+          PR_NUM=$(gh pr list -R "$GITHUB_REPOSITORY" --head "$PR_BRANCH" --json number --jq '.[0].number' 2>/dev/null || echo "")
           if [[ -n "$PR_NUM" ]]; then
             BODY=$(cat <<EOF
             🤖 **Auto-fix attempted but could not generate a patch.**
@@ -169,5 +143,5 @@ jobs:
             Manual intervention required. Check the CI logs for details.
             EOF
             )
-            gh pr comment "$PR_NUM" --body "$BODY"
+            gh pr comment -R "$GITHUB_REPOSITORY" "$PR_NUM" --body "$BODY"
           fi

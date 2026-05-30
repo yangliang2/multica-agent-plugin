@@ -15,6 +15,8 @@ const PR_NUMBER = process.env.PR_NUMBER || '';
 const HEAD_SHA = process.env.HEAD_SHA || '';
 const AUTO_FIX_COUNT = parseInt(process.env.AUTO_FIX_COUNT || '0', 10);
 const MAX_AUTO_FIX = 3;
+const CLAUDE_API_MAX_ATTEMPTS = parseInt(process.env.CLAUDE_API_MAX_ATTEMPTS || '3', 10);
+const CLAUDE_API_RETRY_DELAY_MS = parseInt(process.env.CLAUDE_API_RETRY_DELAY_MS || '10000', 10);
 
 if (!ANTHROPIC_AUTH_TOKEN || !GITHUB_TOKEN || !GITHUB_REPO || !PR_NUMBER || !HEAD_SHA) {
   console.error('Missing required env vars');
@@ -80,6 +82,40 @@ function claudeApi(messages, maxTokens = 4096) {
   }, body);
 }
 
+function sleep(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+function isRetryableClaudeFailure(res, err) {
+  if (err) return ['ECONNRESET', 'ETIMEDOUT', 'EAI_AGAIN', 'ENOTFOUND', 'ECONNREFUSED'].includes(err.code);
+  return res && (res.status === 408 || res.status === 409 || res.status === 425 || res.status === 429 || res.status >= 500);
+}
+
+async function claudeApiWithRetry(messages, maxTokens = 4096) {
+  let lastRes = null;
+  let lastErr = null;
+  const attempts = Math.max(1, CLAUDE_API_MAX_ATTEMPTS);
+  for (let attempt = 1; attempt <= attempts; attempt++) {
+    try {
+      const res = await claudeApi(messages, maxTokens);
+      lastRes = res;
+      lastErr = null;
+      if (res.status === 200 || !isRetryableClaudeFailure(res, null) || attempt === attempts) {
+        return { res, error: null, attempts: attempt };
+      }
+      console.warn(`Claude API attempt ${attempt}/${attempts} returned HTTP ${res.status}; retrying...`);
+    } catch (e) {
+      lastErr = e;
+      if (!isRetryableClaudeFailure(null, e) || attempt === attempts) {
+        return { res: lastRes, error: e, attempts: attempt };
+      }
+      console.warn(`Claude API attempt ${attempt}/${attempts} failed: ${e.code || e.message}; retrying...`);
+    }
+    await sleep(CLAUDE_API_RETRY_DELAY_MS * attempt);
+  }
+  return { res: lastRes, error: lastErr, attempts };
+}
+
 // ── Main ──────────────────────────────────────────────────────────────────────
 
 async function main() {
@@ -138,11 +174,35 @@ Focus on: shell injection, path traversal, missing validation, logic errors, bro
 Limit to the 10 most important issues.`;
 
   console.log('Calling Claude API...');
-  const claudeRes = await claudeApi([{ role: 'user', content: prompt }]);
-  if (claudeRes.status !== 200) {
-    console.error('Claude API error:', claudeRes.body);
-    await setCommitStatus('error', 'Claude API error — could not reach Claude API.');
-    process.exit(1);
+  const { res: claudeRes, error: claudeErr, attempts } = await claudeApiWithRetry([{ role: 'user', content: prompt }]);
+  if (claudeErr || !claudeRes || claudeRes.status !== 200) {
+    const reason = claudeErr ? (claudeErr.code || claudeErr.message) : `HTTP ${claudeRes.status}`;
+    const transient = isRetryableClaudeFailure(claudeRes, claudeErr);
+    if (!transient) {
+      const message = `Claude API permanent failure after ${attempts} attempt(s): ${reason}`;
+      console.error(message);
+      await setCommitStatus('error', 'Claude API permanent failure — review did not run.');
+      process.exit(1);
+    }
+
+    const skippedReview = {
+      summary: `Claude Code Review skipped after ${attempts} retryable Claude API attempt(s) failed (${reason}).`,
+      severity: 'LOW',
+      issues: [],
+    };
+    console.error(skippedReview.summary);
+    fs.writeFileSync('/tmp/review-findings.json', JSON.stringify(skippedReview, null, 2));
+    await setCommitStatus('error', 'Claude review skipped — Claude API unavailable.');
+    const commentRes = await ghApi(`/pulls/${PR_NUMBER}/reviews`, 'POST', {
+      commit_id: HEAD_SHA,
+      body: `## Claude Code Review\n\n${skippedReview.summary}`,
+      event: 'COMMENT',
+      comments: [],
+    });
+    if (commentRes.status >= 300) {
+      console.warn('Failed to post skipped review comment:', commentRes.body.slice(0, 200));
+    }
+    process.exit(0);
   }
 
   let review;
@@ -223,7 +283,7 @@ async function setCommitStatus(state, description) {
     target_url: `https://github.com/${GITHUB_REPO}/pull/${PR_NUMBER}`,
   });
   if (res.status >= 300) {
-    console.error('Failed to set commit status:', res.body.slice(0, 200));
+    throw new Error(`Failed to set commit status: ${res.body.slice(0, 200)}`);
   }
 }
 

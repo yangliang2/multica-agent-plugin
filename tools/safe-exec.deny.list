@@ -1,32 +1,57 @@
 # safe-exec.deny.list — destructive command patterns blocked by pre-tool.sh
-# Format: one pattern per line. Lines starting with # are comments.
-# Patterns are matched against the Bash tool command string (case-insensitive substring match).
-# Blank lines are ignored.
+# Format: one ERE pattern per line (matched via grep -iE).
+# Lines starting with # are comments. Blank lines are ignored.
+# NOTE: this is a convenience check, not a security control.
+# See KNOWN-LIMITATIONS.md for bypass vectors and production guidance.
 
-# Filesystem wipe
-rm -rf /
-rm -rf ~
-rm -rf $HOME
+# Filesystem wipe — recursive deletion of critical paths
+rm\s+-[a-z]*r[a-z]*f\s+/
+rm\s+-[a-z]*r[a-z]*f\s+~
+rm\s+-[a-z]*r[a-z]*f\s+\$HOME
+find\s+.*-delete
+find\s+.*-exec\s+rm
 
-# Force push to protected branches
-git push --force
-git push -f
+# Force push to any remote branch
+git\s+push\s+.*--force
+git\s+push\s+.*-f\s
 
 # Hard reset
-git reset --hard
+git\s+reset\s+--hard
 
-# Drop database
-drop database
-drop table
+# Drop database (SQL)
+drop\s+database
+drop\s+table
 
 # Overwrite disk
-dd if=
-mkfs.
+dd\s+if=
+mkfs\.
 
 # Kill all processes
-kill -9 -1
-killall -9
+kill\s+-9\s+-1
+killall\s+-9
 
 # Truncate system files
-> /etc/
-truncate -s 0 /etc/
+>\s*/etc/
+truncate\s+-s\s+0\s+/etc/
+
+# Shell injection via pipes to shell interpreters
+\|\s*(bash|sh|zsh|dash|ksh)\b
+\|\s*sudo\s+(bash|sh)
+curl\s+.*\|\s*(bash|sh|zsh)
+wget\s+.*-O\s*-\s*\|\s*(bash|sh)
+
+# Encoded payload execution
+base64\s+(-d|--decode).*\|\s*(bash|sh|python|perl|ruby|node)
+echo\s+.*\|\s*base64\s+(-d|--decode)\s*\|\s*(bash|sh)
+
+# Reverse shells
+bash\s+-i\s+.*>&\s*/dev/tcp/
+/dev/tcp/
+/dev/udp/
+nc\s+.*-e\s+.*(bash|sh)
+ncat\s+.*--exec
+socat\s+.*exec:
+
+# Python/Perl/Ruby one-liner remote execution
+python[23]?\s+-c\s+["'].*__(import|exec|eval)
+perl\s+-e\s+["'].*system\s*\(

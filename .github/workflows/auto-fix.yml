@@ -54,113 +54,7 @@ jobs:
 
       - name: Call Claude API for fix
         id: claude_fix
-        run: |
-          node - <<'NODEJS_EOF'
-          const https = require('https');
-          const http = require('http');
-          const fs = require('fs');
-          const { execSync } = require('child_process');
-
-          const failedLog = process.env.FAILED_LOG || '';
-          const localShellcheck = process.env.LOCAL_SHELLCHECK || '';
-
-          // Support proxy/relay via ANTHROPIC_BASE_URL + ANTHROPIC_AUTH_TOKEN
-          const apiKey = process.env.ANTHROPIC_AUTH_TOKEN || process.env.ANTHROPIC_API_KEY || '';
-          const baseUrl = process.env.ANTHROPIC_BASE_URL || 'https://api.anthropic.com';
-          const parsedBase = new URL(baseUrl);
-          const useHttps = parsedBase.protocol === 'https:';
-          const transport = useHttps ? https : http;
-          const hostname = parsedBase.hostname;
-          const port = parsedBase.port || (useHttps ? 443 : 80);
-          const pathPrefix = parsedBase.pathname.replace(/\/$/, '');
-
-          // Read relevant files for context
-          const readFile = (p) => { try { return fs.readFileSync(p, 'utf8'); } catch { return ''; } };
-          const stopSh = readFile('hooks/stop.sh');
-          const sessionStartSh = readFile('hooks/session-start.sh');
-          const preToolSh = readFile('hooks/pre-tool.sh');
-
-          const prompt = `You are an expert bash developer. A CI pipeline has failed. Analyze the failure and produce ONLY the minimal fix.
-
-## CI failure log (last 200 lines)
-${failedLog}
-
-## Local shellcheck output
-${localShellcheck}
-
-## hooks/stop.sh (current)
-${stopSh.slice(0, 8000)}
-
-## hooks/session-start.sh (current)
-${sessionStartSh.slice(0, 8000)}
-
-## hooks/pre-tool.sh (current)
-${preToolSh.slice(0, 3000)}
-
-## Instructions
-Produce a JSON response with this exact structure:
-{
-  "analysis": "one sentence explaining root cause",
-  "patches": [
-    {
-      "file": "hooks/stop.sh",
-      "old": "exact string to replace (must match file exactly)",
-      "new": "replacement string"
-    }
-  ]
-}
-
-Rules:
-- Only fix what the CI log specifically reports as an error or warning
-- Each patch "old" must be a unique string that exists verbatim in the file
-- Prefer the smallest possible change
-- If nothing can be fixed automatically, return {"analysis": "...", "patches": []}
-- Return ONLY valid JSON, no markdown, no explanation outside JSON`;
-
-          const body = JSON.stringify({
-            model: 'claude-haiku-4-5-20251001',
-            max_tokens: 2048,
-            messages: [{ role: 'user', content: prompt }]
-          });
-
-          const options = {
-            hostname,
-            port,
-            path: pathPrefix + '/v1/messages',
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'x-api-key': apiKey,
-              'anthropic-version': '2023-06-01',
-              'Content-Length': Buffer.byteLength(body)
-            }
-          };
-
-          const req = transport.request(options, (res) => {
-            let data = '';
-            res.on('data', (chunk) => data += chunk);
-            res.on('end', () => {
-              try {
-                const resp = JSON.parse(data);
-                const text = resp.content?.[0]?.text || '';
-                // Extract JSON from response
-                const jsonMatch = text.match(/\{[\s\S]*\}/);
-                if (!jsonMatch) { console.log('NO_JSON'); process.exit(0); }
-                const fix = JSON.parse(jsonMatch[0]);
-
-                fs.writeFileSync('/tmp/claude-fix.json', JSON.stringify(fix, null, 2));
-                console.log('ANALYSIS:', fix.analysis);
-                console.log('PATCHES:', fix.patches?.length || 0);
-              } catch (e) {
-                console.error('Parse error:', e.message);
-                fs.writeFileSync('/tmp/claude-fix.json', '{"analysis":"parse error","patches":[]}');
-              }
-            });
-          });
-          req.on('error', (e) => { console.error(e); process.exit(1); });
-          req.write(body);
-          req.end();
-          NODEJS_EOF
+        run: node .github/scripts/ci-autofix.js
         env:
           ANTHROPIC_AUTH_TOKEN: ${{ secrets.ANTHROPIC_AUTH_TOKEN }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
@@ -220,44 +114,60 @@ Rules:
 
       - name: Commit and push fix
         if: env.PATCHES_APPLIED != '0'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          FIX_ANALYSIS: ${{ env.FIX_ANALYSIS }}
+          MODIFIED_FILES: ${{ env.MODIFIED_FILES }}
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add hooks/ tools/ bin/ tests/
+          while IFS= read -r f; do
+            [[ -n "$f" ]] && git add -- "$f"
+          done <<< "$MODIFIED_FILES"
           git diff --cached --quiet && echo "Nothing to commit" && exit 0
-          git commit -m "fix(auto): ${{ env.FIX_ANALYSIS }}
+          cat > /tmp/commit-msg.txt <<EOF
+          fix(auto): ${FIX_ANALYSIS}
 
           Automated fix generated by Claude (haiku-4-5) in response to CI failure.
-          Run: ${{ github.event.workflow_run.id }}"
+          Run: ${{ github.event.workflow_run.id }}
+          EOF
+          git commit -F /tmp/commit-msg.txt
           git push origin HEAD:${{ github.event.workflow_run.head_branch }}
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Comment on PR if fix applied
         if: env.PATCHES_APPLIED != '0'
-        run: |
-          # Find PR for this branch
-          PR_NUM=$(gh pr list --head "${{ github.event.workflow_run.head_branch }}" --json number --jq '.[0].number' 2>/dev/null || echo "")
-          if [[ -n "$PR_NUM" ]]; then
-            gh pr comment "$PR_NUM" --body "🤖 **Auto-fix applied** — CI failure was detected and a fix was pushed automatically.
-
-**Analysis:** ${{ env.FIX_ANALYSIS }}
-
-Re-running CI on the new commit. Review the changes before merging."
-          fi
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          FIX_ANALYSIS: ${{ env.FIX_ANALYSIS }}
+        run: |
+          PR_NUM=$(gh pr list --head "${{ github.event.workflow_run.head_branch }}" --json number --jq '.[0].number' 2>/dev/null || echo "")
+          if [[ -n "$PR_NUM" ]]; then
+            BODY=$(cat <<EOF
+            🤖 **Auto-fix applied** — CI failure was detected and a fix was pushed automatically.
+
+            **Analysis:** ${FIX_ANALYSIS}
+
+            Re-running CI on the new commit. Review the changes before merging.
+            EOF
+            )
+            gh pr comment "$PR_NUM" --body "$BODY"
+          fi
 
       - name: Comment on PR if no fix found
         if: env.PATCHES_APPLIED == '0'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          FIX_ANALYSIS: ${{ env.FIX_ANALYSIS }}
         run: |
           PR_NUM=$(gh pr list --head "${{ github.event.workflow_run.head_branch }}" --json number --jq '.[0].number' 2>/dev/null || echo "")
           if [[ -n "$PR_NUM" ]]; then
-            gh pr comment "$PR_NUM" --body "🤖 **Auto-fix attempted but could not generate a patch.**
+            BODY=$(cat <<EOF
+            🤖 **Auto-fix attempted but could not generate a patch.**
 
-**Analysis:** ${{ env.FIX_ANALYSIS }}
+            **Analysis:** ${FIX_ANALYSIS}
 
-Manual intervention required. Check the CI logs for details."
+            Manual intervention required. Check the CI logs for details.
+            EOF
+            )
+            gh pr comment "$PR_NUM" --body "$BODY"
           fi
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

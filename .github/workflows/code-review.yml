@@ -29,8 +29,11 @@ jobs:
       - name: Run Claude review
         id: review
         run: |
+          set +e
           node .github/scripts/claude-review.js
-          echo "exit_code=$?" >> "$GITHUB_OUTPUT"
+          rc=$?
+          set -e
+          echo "exit_code=$rc" >> "$GITHUB_OUTPUT"
           if [[ -f /tmp/review-findings.json ]]; then
             SEV=$(python3 -c "import json; print(json.load(open('/tmp/review-findings.json')).get('severity','LOW'))")
             echo "severity=$SEV" >> "$GITHUB_OUTPUT"
@@ -108,37 +111,51 @@ jobs:
 
       - name: Commit and push fix
         if: steps.check_count.outputs.skip == 'false' && env.PATCHES_APPLIED != '0'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          FIX_ANALYSIS: ${{ env.FIX_ANALYSIS }}
+          MODIFIED_FILES: ${{ env.MODIFIED_FILES }}
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add hooks/ tools/ bin/ tests/
+          while IFS= read -r f; do
+            [[ -n "$f" ]] && git add -- "$f"
+          done <<< "$MODIFIED_FILES"
           git diff --cached --quiet && echo "Nothing to commit" && exit 0
-          git commit -m "fix(auto-review): ${{ env.FIX_ANALYSIS }}
+          cat > /tmp/commit-msg.txt <<EOF
+          fix(auto-review): ${FIX_ANALYSIS}
 
           Automated fix for HIGH/CRITICAL issues found by Claude Code Review.
-          Attempt: ${{ steps.check_count.outputs.next }}/3"
+          Attempt: ${{ steps.check_count.outputs.next }}/3
+          EOF
+          git commit -F /tmp/commit-msg.txt
           git push origin HEAD:${{ github.event.pull_request.head.ref }}
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Comment — fix applied
         if: steps.check_count.outputs.skip == 'false' && env.PATCHES_APPLIED != '0'
-        run: |
-          gh pr comment "${{ github.event.pull_request.number }}" --body \
-            "🤖 **Auto-fix applied** (attempt ${{ steps.check_count.outputs.next }}/3)
-
-          **Fix:** ${{ env.FIX_ANALYSIS }}
-
-          A new commit has been pushed. Re-running code review."
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          FIX_ANALYSIS: ${{ env.FIX_ANALYSIS }}
+        run: |
+          BODY=$(cat <<EOF
+          🤖 **Auto-fix applied** (attempt ${{ steps.check_count.outputs.next }}/3)
+
+          **Fix:** ${FIX_ANALYSIS}
+
+          A new commit has been pushed. Re-running code review.
+          EOF
+          )
+          gh pr comment "${{ github.event.pull_request.number }}" --body "$BODY"
 
       - name: Comment — fix limit reached
         if: steps.check_count.outputs.skip == 'true'
-        run: |
-          gh pr comment "${{ github.event.pull_request.number }}" --body \
-            "⚠️ **Auto-fix limit reached (3/3).** Manual intervention required.
-
-          Claude was unable to fully resolve the HIGH/CRITICAL issues after 3 attempts. Please review the inline comments and fix manually."
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          BODY=$(cat <<EOF
+          ⚠️ **Auto-fix limit reached (3/3).** Manual intervention required.
+
+          Claude was unable to fully resolve the HIGH/CRITICAL issues after 3 attempts. Please review the inline comments and fix manually.
+          EOF
+          )
+          gh pr comment "${{ github.event.pull_request.number }}" --body "$BODY"

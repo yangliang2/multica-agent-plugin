@@ -275,6 +275,11 @@ try:
             continue
         if not ev.exists() or ev.stat().st_size == 0:
             missing.append(sid)
+            continue
+        # H3: evidence must contain at least one structured field
+        ev_text = ev.read_text(errors='replace')
+        if not any(m in ev_text for m in ('exit_code:', 'command:', 'output_hash:', 'summary:')):
+            missing.append(f'{sid}(no-structure)')
     print(','.join(missing))
 except Exception as e:
     print(f'ERROR:{e}', file=sys.stderr)
@@ -500,6 +505,13 @@ print(json.dumps(d))
   fi
 
   prune_notepad
+
+  # Auto-run curate-memory if available (dedup + decay learnings on DONE)
+  _curate="${MULTICA_PLUGIN_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}/tools/curate-memory.sh"
+  if [[ -f "$_curate" ]] && [[ -f "${MULTICA_WORKDIR}/.multica/learnings.jsonl" ]]; then
+    MULTICA_WORKDIR="$MULTICA_WORKDIR" bash "$_curate" \
+      2>/dev/null || log_error "curate-memory.sh failed (non-blocking)"
+  fi
 
   squad_leader_audit
 

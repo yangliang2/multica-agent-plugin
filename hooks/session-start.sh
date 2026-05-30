@@ -238,15 +238,31 @@ if [[ -n "$issue_id" ]]; then
   LOOP_JSON="${MULTICA_WORKDIR}/.multica/state/${issue_id}/loop.json"
 
   if [[ -f "$LOOP_JSON" ]]; then
-    active=$(awk -F'"' '/"active"/{print $4}' "$LOOP_JSON" | head -1)
-    if [[ -z "$active" ]]; then
-      active=$(awk '/"active"/{gsub(/[^a-z]/,"",$2); print $2}' "$LOOP_JSON" | head -1)
-    fi
+    # H6: replace awk JSON parsing with python3 for correctness on all platforms
+    _loop_fields=$(python3 -c "
+import json, sys
+try:
+    d = json.load(open(sys.argv[1]))
+    active = str(d.get('active', False)).lower()
+    iteration = str(d.get('iteration', 0))
+    phase = str(d.get('phase', ''))
+    next_story = ''
+    for s in d.get('stories', []):
+        if not s.get('passes', True):
+            next_story = s.get('title', '')
+            break
+    print(f'{active}|{iteration}|{phase}|{next_story}')
+except Exception:
+    print('false|||')
+" "$LOOP_JSON" 2>/dev/null || echo "false|||")
+    active="${_loop_fields%%|*}"
+    _rest="${_loop_fields#*|}"
+    iteration="${_rest%%|*}"
+    _rest="${_rest#*|}"
+    phase="${_rest%%|*}"
+    next_story="${_rest#*|}"
 
     if [[ "$active" == "true" ]]; then
-      iteration=$(awk -F'"' '/"iteration"/{gsub(/[^0-9]/,"",$3); print $3}' "$LOOP_JSON" | head -1)
-      phase=$(awk -F'"' '/"phase"/{print $4}' "$LOOP_JSON" | head -1)
-
       # H4: generate/refresh nonce for DONE signal binding
       _nonce_file="${MULTICA_WORKDIR}/.multica/state/${issue_id}/done-nonce.txt"
       _nonce=$(cat "$_nonce_file" 2>/dev/null || true)
@@ -256,11 +272,6 @@ if [[ -n "$issue_id" ]]; then
         mkdir -p "$(dirname "$_nonce_file")"
         printf '%s' "$_nonce" > "$_nonce_file"
       fi
-
-      next_story=$(awk -F'"' '
-        /"passes"/ && /false/ { found=1 }
-        /"title"/ && found    { print $4; exit }
-      ' "$LOOP_JSON")
 
       loop_hint="Resuming issue ${issue_id}: iteration ${iteration}, phase=${phase}."
       if [[ -n "$next_story" ]]; then
@@ -298,12 +309,16 @@ if [[ -f "$claude_md" ]] && grep -qF "$SQUAD_PROTOCOL_MARKER" "$claude_md"; then
   if [[ -n "${MULTICA_ISSUE_ID:-}" ]]; then
     bounces_file="${MULTICA_WORKDIR}/.multica/state/${MULTICA_ISSUE_ID}/hitl-bounces.json"
     if [[ -f "$bounces_file" ]]; then
-      while IFS= read -r line; do
-        bounce_context+="$line"$'\n'
-      done < <(awk '
-        /"[^"]+": \{/ { key=$0; gsub(/[": {]/, "", key); gsub(/^[[:space:]]+/, "", key) }
-        /"count":/ { gsub(/[^0-9]/, "", $2); print "HITL bounce count for " key ": " $2 "/3" }
-      ' "$bounces_file")
+      bounce_context=$(python3 -c "
+import json, sys
+try:
+    data = json.load(open(sys.argv[1]))
+    for qid, v in data.items():
+        count = v.get('count', 0)
+        print(f'HITL bounce count for {qid}: {count}/3')
+except Exception:
+    pass
+" "$bounces_file" 2>/dev/null || true)
     fi
   fi
   if [[ -n "$bounce_context" ]]; then

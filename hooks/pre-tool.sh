@@ -34,13 +34,33 @@ elif [[ -f "${MULTICA_WORKDIR}/.multica/current_issue" ]]; then
   issue_id=$(cat "${MULTICA_WORKDIR}/.multica/current_issue")
 fi
 
+HOOK_LOG="${MULTICA_WORKDIR}/.multica/logs/hook-errors.log"
+log_error() {
+  mkdir -p "$(dirname "$HOOK_LOG")"
+  echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] [pre-tool.sh] $*" >> "$HOOK_LOG" 2>/dev/null || true
+}
+
 post_comment() {
   local body="$1"
-  if [[ -n "$issue_id" ]] && command -v multica >/dev/null 2>&1; then
-    multica issue comment add "$issue_id" \
-      --content "$body" \
-      2>/dev/null || true
+  if [[ -z "$issue_id" ]] || ! command -v multica >/dev/null 2>&1; then
+    return 0
   fi
+  # M8: rate limit — at most 1 destructive-guard comment per minute per issue
+  _rate_dir="${MULTICA_WORKDIR}/.multica/state/${issue_id}"
+  _rate_file="${_rate_dir}/pretool-comment-rate.txt"
+  _now=$(date -u +%s 2>/dev/null || echo 0)
+  _last=$(cat "$_rate_file" 2>/dev/null || echo 0)
+  _last=${_last//[^0-9]/}
+  _last=${_last:-0}
+  if [[ $(( _now - _last )) -lt 60 ]]; then
+    log_error "rate-limited destructive-guard comment for issue ${issue_id}"
+    return 0
+  fi
+  mkdir -p "$_rate_dir"
+  echo "$_now" > "$_rate_file"
+  multica issue comment add "$issue_id" \
+    --content "$body" \
+    2>/dev/null || log_error "failed to post destructive-guard comment"
 }
 
 # Read tool name and input from stdin JSON (Claude Code PreToolUse hook contract).
@@ -93,18 +113,29 @@ if [[ -z "$command_str" ]]; then
   exit 0
 fi
 
-# Check against deny list
-if [[ -f "$DENY_LIST" ]]; then
-  while IFS= read -r pattern; do
-    # Skip comments and blank lines
-    [[ -z "$pattern" || "$pattern" == \#* ]] && continue
-    if printf '%s' "$command_str" | grep -qiF "$pattern" 2>/dev/null; then
-      post_comment "[destructive-guard] Tool call blocked — matched deny pattern: \`${pattern}\`
-Command: \`${command_str:0:200}\`
-To override, run the command manually outside the daemon."
-      exit 1
-    fi
-  done < "$DENY_LIST"
+# Check against deny list (ERE patterns, case-insensitive)
+if [[ ! -f "$DENY_LIST" ]]; then
+  log_error "deny list not found at ${DENY_LIST} — destructive guard disabled"
+  exit 0
 fi
+
+# M8: truncate command for comment — hash instead of raw string to avoid leaking secrets
+_cmd_len=${#command_str}
+_cmd_hash=$(printf '%s' "$command_str" | sha256sum | cut -c1-8)
+if [[ $_cmd_len -le 80 ]]; then
+  _cmd_display="${command_str}"
+else
+  _cmd_display="${command_str:0:80}… (${_cmd_len} chars, sha256:${_cmd_hash})"
+fi
+
+while IFS= read -r pattern; do
+  [[ -z "$pattern" || "$pattern" == \#* ]] && continue
+  if printf '%s' "$command_str" | grep -qiE "$pattern" 2>/dev/null; then
+    post_comment "[destructive-guard] Tool call blocked — matched deny pattern: \`${pattern}\`
+Command: \`${_cmd_display}\`
+To override, run the command manually outside the daemon."
+    exit 1
+  fi
+done < "$DENY_LIST"
 
 exit 0

@@ -1,5 +1,28 @@
 # Changelog
 
+## [1.6.0] - 2026-05-30
+
+### Fixed
+
+- **C6 — `tools/safe-exec.deny.list` + `hooks/pre-tool.sh`**: destructive guard
+  upgraded from substring (`grep -iF`) to ERE (`grep -iE`) matching. New patterns
+  cover previously bypassable vectors: `rm  -rf /` (double-space), `find -delete`,
+  `find -exec rm`, `curl|bash`, `wget|sh`, `base64 -d|bash`, reverse shells
+  (`/dev/tcp/`, `nc -e`, `socat exec:`), and Python/Perl one-liner remote
+  execution. `git push -f` now requires trailing whitespace to avoid false
+  positives on `-force`. Missing deny list now logged and fails open with a
+  log entry rather than silently passing all commands.
+
+- **M8 — `hooks/pre-tool.sh`**: destructive-guard issue comment no longer
+  pastes the raw command. Commands ≤80 chars are shown as-is; longer commands
+  are truncated to 80 chars with a sha256 hash suffix to avoid leaking secrets.
+  Rate limit: at most 1 comment per minute per issue (enforced via
+  `.multica/state/{issue_id}/pretool-comment-rate.txt`).
+
+- **M1 — `hooks/pre-tool.sh`**: added `log_error()` function and proper error
+  logging for rate-limit events and failed comment posts. Eliminates silent
+  failure paths in the destructive guard.
+
 ## [1.5.0] - 2026-05-29
 
 ### Fixed

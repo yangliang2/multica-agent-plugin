@@ -40,24 +40,30 @@ log_error() {
   echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] [pre-tool.sh] $*" >> "$HOOK_LOG" 2>/dev/null || true
 }
 
-post_comment() {
-  local body="$1"
-  if [[ -z "$issue_id" ]] || ! command -v multica >/dev/null 2>&1; then
-    return 0
-  fi
+_rate_check_and_record() {
   # M8: rate limit — at most 1 destructive-guard comment per minute per issue
+  # Returns 0 (allowed to comment) or 1 (rate limited). Always records the hit.
+  if [[ -z "$issue_id" ]]; then return 1; fi
   _rate_dir="${MULTICA_WORKDIR}/.multica/state/${issue_id}"
   _rate_file="${_rate_dir}/pretool-comment-rate.txt"
   _now=$(date -u +%s 2>/dev/null || echo 0)
   _last=$(cat "$_rate_file" 2>/dev/null || echo 0)
   _last=${_last//[^0-9]/}
   _last=${_last:-0}
+  mkdir -p "$_rate_dir"
   if [[ $(( _now - _last )) -lt 60 ]]; then
     log_error "rate-limited destructive-guard comment for issue ${issue_id}"
+    return 1
+  fi
+  echo "$_now" > "$_rate_file"
+  return 0
+}
+
+post_comment() {
+  local body="$1"
+  if [[ -z "$issue_id" ]] || ! command -v multica >/dev/null 2>&1; then
     return 0
   fi
-  mkdir -p "$_rate_dir"
-  echo "$_now" > "$_rate_file"
   multica issue comment add "$issue_id" \
     --content "$body" \
     2>/dev/null || log_error "failed to post destructive-guard comment"
@@ -131,9 +137,11 @@ fi
 while IFS= read -r pattern; do
   [[ -z "$pattern" || "$pattern" == \#* ]] && continue
   if printf '%s' "$command_str" | grep -qiE "$pattern" 2>/dev/null; then
-    post_comment "[destructive-guard] Tool call blocked — matched deny pattern: \`${pattern}\`
+    if _rate_check_and_record; then
+      post_comment "[destructive-guard] Tool call blocked — matched deny pattern: \`${pattern}\`
 Command: \`${_cmd_display}\`
 To override, run the command manually outside the daemon."
+    fi
     exit 1
   fi
 done < "$DENY_LIST"

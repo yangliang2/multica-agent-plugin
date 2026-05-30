@@ -37,6 +37,9 @@ run_test "test-stop-done-failing-story.sh"
 run_test "test-session-start-log-error.sh"
 
 run_test "test-stop-evidence.sh"
+run_test "test-stop-evidence-structure.sh"
+run_test "test-pretool-rate-limit.sh"
+run_test "test-session-start-size-limit.sh"
 
 echo ""
 echo "Results: ${PASS} passed, ${FAIL} failed, ${SKIP} skipped"

@@ -1,5 +1,27 @@
 # Changelog
 
+## [1.7.0] - 2026-05-30
+
+### Fixed
+
+- **H6 — `hooks/session-start.sh`**: replaced all `awk -F'"'` JSON parsing
+  with a single `python3` call that reads `loop.json` fields (`active`,
+  `iteration`, `phase`, `next_story`) atomically. Also replaced awk-based
+  `hitl-bounces.json` parsing with python3. Eliminates silent failures on
+  Alpine/busybox where awk field-splitting on JSON is unreliable.
+
+- **H3 (partial) — `hooks/stop.sh`**: evidence files must now contain at
+  least one structured field (`exit_code:`, `command:`, `output_hash:`, or
+  `summary:`) in addition to being non-empty. Bare freeform text no longer
+  satisfies the evidence gate.
+
+### Added
+
+- **`tools/curate-memory.sh` auto-run**: `stop.sh` DONE path now automatically
+  invokes `curate-memory.sh` when `learnings.jsonl` exists. Knowledge dedup
+  and decay runs on every successful DONE instead of requiring manual
+  invocation. Errors are non-blocking (logged to `hook-errors.log`).
+
 ## [1.6.0] - 2026-05-30
 
 ### Fixed

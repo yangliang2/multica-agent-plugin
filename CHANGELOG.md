@@ -1,5 +1,23 @@
 # Changelog
 
+## [1.9.0] - 2026-05-30
+
+### Added
+
+- **`tests/smoke/test-static-analysis.sh`**: 4 static pattern checks on hook
+  source files — python3 -c shell-var injection, duplicate trap EXIT, bare
+  `git add`, multica comment calls without error logging.
+
+- **`tests/smoke/test-shell-injection.sh`**: adversarial input tests for
+  session-start.sh and pre-tool.sh with paths/IDs containing spaces, quotes,
+  `$`, `|`, `;`, and command substitution sequences. Verifies no injection
+  artifacts are created.
+
+### Fixed
+
+- **`test-pretool-rate-limit.sh`**: merged two separate `trap ... EXIT`
+  registrations into one to avoid silent trap replacement.
+
 ## [1.8.0] - 2026-05-30
 
 ### Fixed

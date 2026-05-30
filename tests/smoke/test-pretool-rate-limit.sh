@@ -11,7 +11,8 @@ pass() { echo "  PASS: $*"; PASS=$((PASS+1)); }
 fail() { echo "  FAIL: $*"; FAIL=$((FAIL+1)); }
 
 WORKDIR=$(mktemp -d)
-cleanup() { rm -rf "$WORKDIR"; }
+WORKDIR2=$(mktemp -d)
+cleanup() { rm -rf "$WORKDIR" "$WORKDIR2"; }
 trap cleanup EXIT
 
 ISSUE_ID="TEST-RATE-001"
@@ -46,8 +47,6 @@ else
 fi
 
 # Test 3: non-daemon session — no rate file should be created
-WORKDIR2=$(mktemp -d)
-trap 'rm -rf "$WORKDIR2"' EXIT
 mkdir -p "${WORKDIR2}/.multica/state/TEST-RATE-002"
 printf '%s' "$input" | MULTICA_AGENT_SESSION=0 MULTICA_WORKDIR="$WORKDIR2" \
   MULTICA_PLUGIN_ROOT="$PLUGIN_ROOT" \

@@ -9,7 +9,7 @@
     {
       "name": "multica-agent-plugin",
       "description": "Enables Claude Code agents running inside the Multica daemon to handle issues reliably: verification before claiming done, structured HITL, Squad leader/member coordination, cross-session knowledge management.",
-      "version": "1.8.0",
+      "version": "1.9.0",
       "author": {
         "name": "yangliang2"
       },
@@ -19,5 +19,5 @@
       "tags": ["multica", "verification", "squad", "hitl", "knowledge-management"]
     }
   ],
-  "version": "1.8.0"
+  "version": "1.9.0"
 }

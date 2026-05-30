@@ -83,34 +83,9 @@ function claudeApi(messages, maxTokens = 4096) {
 // ── Main ──────────────────────────────────────────────────────────────────────
 
 async function main() {
-  // 1. Create or reuse a pending Check Run (avoid duplicate check runs on same commit)
-  let checkRunId;
-  const existingRes = await ghApi(`/commits/${HEAD_SHA}/check-runs?check_name=Claude+Code+Review`);
-  const existing = JSON.parse(existingRes.body);
-  const inProgress = (existing.check_runs || []).find(r => r.status === 'in_progress' || r.status === 'queued');
-  if (inProgress) {
-    checkRunId = inProgress.id;
-    await ghApi(`/check-runs/${checkRunId}`, 'PATCH', {
-      status: 'in_progress',
-      output: { title: 'Reviewing…', summary: 'Claude is analyzing the diff.' },
-    });
-    console.log(`Reusing existing check run: ${checkRunId}`);
-  } else {
-    const checkRes = await ghApi('/check-runs', 'POST', {
-      name: 'Claude Code Review',
-      head_sha: HEAD_SHA,
-      status: 'in_progress',
-      started_at: new Date().toISOString(),
-      output: { title: 'Reviewing…', summary: 'Claude is analyzing the diff.' },
-    });
-    const checkData = JSON.parse(checkRes.body);
-    checkRunId = checkData.id;
-    if (!checkRunId) {
-      console.error('Failed to create check run:', checkRes.body);
-      process.exit(1);
-    }
-    console.log(`Check run created: ${checkRunId}`);
-  }
+  // 1. Post a pending commit status (immune to the 2025-02-12 check-run PATCH restriction)
+  await setCommitStatus('pending', 'Claude is analyzing the diff…');
+  console.log(`Commit status set to pending for ${HEAD_SHA.slice(0, 8)}`);
 
   // 2. Fetch PR diff
   const diffRes = await request({
@@ -166,7 +141,7 @@ Limit to the 10 most important issues.`;
   const claudeRes = await claudeApi([{ role: 'user', content: prompt }]);
   if (claudeRes.status !== 200) {
     console.error('Claude API error:', claudeRes.body);
-    await completeCheck(checkRunId, 'failure', 'Claude API error', 'Failed to reach Claude API.');
+    await setCommitStatus('error', 'Claude API error — could not reach Claude API.');
     process.exit(1);
   }
 
@@ -178,7 +153,7 @@ Limit to the 10 most important issues.`;
     review = JSON.parse(jsonMatch[0]);
   } catch (e) {
     console.error('Failed to parse Claude response:', e.message);
-    await completeCheck(checkRunId, 'failure', 'Parse error', 'Could not parse Claude review output.');
+    await setCommitStatus('error', 'Parse error — could not parse Claude review output.');
     process.exit(1);
   }
 
@@ -221,23 +196,35 @@ Limit to the 10 most important issues.`;
   });
   console.log(`Posted review (${reviewEvent}) with ${reviewComments.length} inline comment(s)`);
 
-  // 7. Complete Check Run
-  const conclusion = hasCriticalOrHigh ? 'failure' : 'success';
-  const issueLines = (review.issues || [])
-    .map(i => `- **[${i.severity}]** \`${i.file}:${i.line}\` — ${i.title}`)
-    .join('\n');
-  await completeCheck(
-    checkRunId,
-    conclusion,
-    `Code Review: ${review.severity} — ${review.issues?.length || 0} issue(s)`,
-    `${review.summary}\n\n${issueLines || '_No issues found._'}`,
-  );
+  // 7. Set final commit status
+  const statusState = hasCriticalOrHigh ? 'failure' : 'success';
+  const issueCount = review.issues?.length || 0;
+  const statusDesc = hasCriticalOrHigh
+    ? `${review.severity}: ${issueCount} issue(s) found — merge blocked`
+    : issueCount > 0
+      ? `${review.severity}: ${issueCount} issue(s) — no blockers`
+      : 'No issues found';
+  await setCommitStatus(statusState, statusDesc);
 
   // 8. Write findings to file for auto-fix job to consume
   fs.writeFileSync('/tmp/review-findings.json', JSON.stringify(review, null, 2));
 
-  console.log(`Check run completed: ${conclusion}`);
+  console.log(`Commit status set to ${statusState}: ${statusDesc}`);
   process.exit(hasCriticalOrHigh ? 1 : 0);
+}
+
+// Use Commit Statuses API instead of Check Runs API —
+// GITHUB_TOKEN can update statuses it didn't create; check-run PATCH is blocked since 2025-02-12
+async function setCommitStatus(state, description) {
+  const res = await ghApi(`/statuses/${HEAD_SHA}`, 'POST', {
+    state,           // 'pending' | 'success' | 'failure' | 'error'
+    context: 'Claude Code Review',
+    description: description.slice(0, 140),
+    target_url: `https://github.com/${GITHUB_REPO}/pull/${PR_NUMBER}`,
+  });
+  if (res.status >= 300) {
+    console.error('Failed to set commit status:', res.body.slice(0, 200));
+  }
 }
 
 function buildPositionMap(files) {
@@ -263,13 +250,5 @@ function buildPositionMap(files) {
   return map;
 }
 
-async function completeCheck(checkRunId, conclusion, title, summary) {
-  await ghApi(`/check-runs/${checkRunId}`, 'PATCH', {
-    status: 'completed',
-    completed_at: new Date().toISOString(),
-    conclusion,
-    output: { title, summary },
-  });
-}
 
 main().catch((e) => { console.error(e); process.exit(1); });

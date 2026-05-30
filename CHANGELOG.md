@@ -1,5 +1,39 @@
 # Changelog
 
+## [2.0.0] - 2026-05-30
+
+### Fixed (workflow hardening)
+
+- **Commit message injection**: both `code-review.yml` and `auto-fix.yml` no
+  longer interpolate Claude-generated `FIX_ANALYSIS` directly into `git commit -m`.
+  Commit messages are written via temporary files and passed with `git commit -F`.
+
+- **Exit code capture**: `code-review.yml` now captures `node .github/scripts/claude-review.js`
+  exit code correctly (`rc=$?`) before writing `exit_code` to `GITHUB_OUTPUT`.
+
+- **Over-broad staging**: both workflows now stage only `MODIFIED_FILES` emitted by
+  the autofix scripts instead of `git add hooks/ tools/ bin/ tests/`.
+
+- **GITHUB_ENV injection**: `claude-autofix.js` now writes `FIX_ANALYSIS` and
+  `MODIFIED_FILES` using multiline-safe `<<EOF` blocks rather than raw `KEY=value`
+  interpolation. Prevents newline / special-char corruption.
+
+- **Workflow YAML robustness**: extracted the large inline Node.js block from
+  `auto-fix.yml` into `.github/scripts/ci-autofix.js`, making the workflow valid
+  strict YAML and easier to test.
+
+### Added
+
+- **`.github/PULL_REQUEST_TEMPLATE.md`**: standardized PR structure with required
+  `Summary`, `Risk`, `Test plan`, and `Rollback` sections.
+
+- **`.github/workflows/pr-lint.yml`**: PR title/body quality gate. Enforces:
+  - title format: `<type>: <meaningful description>`
+  - no vague titles like `wip`, `update`, `fix bug`
+  - body must contain `## Summary`, `## Risk`, `## Test plan`, `## Rollback`
+  - Summary must contain at least one non-empty bullet
+  - Test plan must contain at least one checkbox item
+
 ## [1.9.0] - 2026-05-30
 
 ### Added

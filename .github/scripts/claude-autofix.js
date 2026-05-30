@@ -65,9 +65,16 @@ async function main() {
   const findings = JSON.parse(readFile('/tmp/review-findings.json') || '{"issues":[]}');
   const issues = (findings.issues || []).filter(i => ['CRITICAL', 'HIGH'].includes(i.severity));
 
+  const env = process.env.GITHUB_ENV || '/tmp/env';
+  const writeEnv = (key, value) => {
+    fs.appendFileSync(env, `${key}<<EOF\n${String(value)}\nEOF\n`);
+  };
+
   if (issues.length === 0) {
     console.log('No CRITICAL/HIGH issues to fix.');
-    fs.writeFileSync(process.env.GITHUB_ENV || '/tmp/env', 'PATCHES_APPLIED=0\nFIX_ANALYSIS=no issues to fix\n', { flag: 'a' });
+    fs.writeFileSync(env, 'PATCHES_APPLIED=0\n', { flag: 'a' });
+    writeEnv('FIX_ANALYSIS', 'no issues to fix');
+    writeEnv('MODIFIED_FILES', '');
     process.exit(0);
   }
 
@@ -138,6 +145,7 @@ Rules:
 
   // 4. Apply patches
   let applied = 0;
+  const modifiedFiles = [];
   for (const p of (fix.patches || [])) {
     const content = readFile(p.file);
     if (!content) { console.log(`  SKIP ${p.file}: not found`); continue; }
@@ -145,12 +153,14 @@ Rules:
     fs.writeFileSync(p.file, content.replace(p.old, p.new), 'utf8');
     console.log(`  PATCHED ${p.file}`);
     applied++;
+    if (!modifiedFiles.includes(p.file)) modifiedFiles.push(p.file);
   }
 
   if (applied === 0) {
     console.log('No patches applied.');
-    const env = process.env.GITHUB_ENV || '/tmp/env';
-    fs.appendFileSync(env, `PATCHES_APPLIED=0\nFIX_ANALYSIS=${fix.analysis}\n`);
+    fs.appendFileSync(env, `PATCHES_APPLIED=0\n`);
+    writeEnv('FIX_ANALYSIS', fix.analysis || 'no patches applied');
+    writeEnv('MODIFIED_FILES', '');
     process.exit(0);
   }
 
@@ -163,14 +173,16 @@ Rules:
   } catch (e) {
     console.error('Verification failed — reverting patches');
     execSync('git checkout -- .', { stdio: 'inherit' });
-    const env = process.env.GITHUB_ENV || '/tmp/env';
-    fs.appendFileSync(env, `PATCHES_APPLIED=0\nFIX_ANALYSIS=verification failed after patch\n`);
+    fs.appendFileSync(env, `PATCHES_APPLIED=0\n`);
+    writeEnv('FIX_ANALYSIS', 'verification failed after patch');
+    writeEnv('MODIFIED_FILES', '');
     process.exit(1);
   }
 
   // 6. Write env for commit step
-  const env = process.env.GITHUB_ENV || '/tmp/env';
-  fs.appendFileSync(env, `PATCHES_APPLIED=${applied}\nFIX_ANALYSIS=${fix.analysis}\n`);
+  fs.appendFileSync(env, `PATCHES_APPLIED=${applied}\n`);
+  writeEnv('FIX_ANALYSIS', fix.analysis || 'auto-fix');
+  writeEnv('MODIFIED_FILES', modifiedFiles.join('\n'));
   process.exit(0);
 }
 

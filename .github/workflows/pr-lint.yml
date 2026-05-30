@@ -1,0 +1,58 @@
+name: PR Lint
+
+on:
+  pull_request:
+    branches: [master]
+    types: [opened, edited, synchronize, reopened]
+
+jobs:
+  pr-lint:
+    name: PR message quality
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: read
+      statuses: write
+    steps:
+      - name: Validate PR title and body
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_BODY: ${{ github.event.pull_request.body }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          fail=0
+
+          # Title: conventional-ish prefix + meaningful length
+          if ! printf '%s' "$PR_TITLE" | grep -Eq '^(fix|feat|refactor|test|docs|chore)(\(.+\))?: .{8,}$'; then
+            echo "PR title must follow '<type>: <meaningful description>' (e.g. 'fix: block rm -rf bypass')."
+            fail=1
+          fi
+
+          # Disallow weak titles
+          if printf '%s' "$PR_TITLE" | grep -Eiq '^(wip|update|try again|misc|stuff|fix bug|tmp)\b'; then
+            echo "PR title is too vague."
+            fail=1
+          fi
+
+          # Body must include required sections
+          for section in '## Summary' '## Risk' '## Test plan' '## Rollback'; do
+            if ! printf '%s' "$PR_BODY" | grep -Fq "$section"; then
+              echo "PR body missing section: $section"
+              fail=1
+            fi
+          done
+
+          # Summary should have at least one bullet with content
+          if ! printf '%s' "$PR_BODY" | awk '/^## Summary/{in_sec=1;next}/^## /{in_sec=0}in_sec' | grep -Eq '^-[[:space:]]+\S+'; then
+            echo "PR Summary section must include at least one non-empty bullet."
+            fail=1
+          fi
+
+          # Test plan should contain at least one checked/unchecked checkbox
+          if ! printf '%s' "$PR_BODY" | awk '/^## Test plan/{in_sec=1;next}/^## /{in_sec=0}in_sec' | grep -Eq '^- \[[ xX]\] '; then
+            echo "PR Test plan section must include at least one checkbox item."
+            fail=1
+          fi
+
+          if [[ $fail -ne 0 ]]; then
+            exit 1
+          fi

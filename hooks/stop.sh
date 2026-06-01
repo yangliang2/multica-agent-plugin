@@ -214,6 +214,11 @@ fi
 if [[ "$done_signal" == "false" ]]; then
   if [[ -n "$(find "$LOOP_JSON" -mmin -1 2>/dev/null)" ]]; then
     echo "[stop.sh] loop active, no DONE signal — blocking session stop" >&2
+    # M7: write stdout JSON so Claude Code can relay the block reason to the model
+    python3 -c "
+import json, sys
+print(json.dumps({'hookSpecificOutput': {'additionalContext': sys.argv[1]}}))
+" "[multica] Loop still active — emit <promise>DONE</promise> (with nonce if required) to complete the session." 2>/dev/null || true
     exit 2
   fi
 fi
@@ -588,5 +593,13 @@ fi
 prune_notepad
 
 squad_leader_audit
+
+# M7: write stdout JSON so Claude Code can relay the block reason to the model
+python3 -c "
+import json, sys
+it, ph = sys.argv[1], sys.argv[2]
+msg = f'[multica] Loop active at iteration {it}, phase={ph}. Continuing — emit <promise>DONE</promise> to complete.'
+print(json.dumps({'hookSpecificOutput': {'additionalContext': msg}}))
+" "$iteration" "$phase" 2>/dev/null || true
 
 exit 2

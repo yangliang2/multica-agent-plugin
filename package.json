@@ -1,7 +1,7 @@
 {
   "name": "multica-agent-plugin",
-  "version": "2.0.0",
-  "description": "Claude Code agent plugin for the Multica ecosystem — verification Iron Law, Squad coordination, knowledge management",
+  "version": "2.2.0",
+  "description": "Claude Code agent plugin for the Multica ecosystem \u2014 verification Iron Law, Squad coordination, knowledge management",
   "bin": {
     "multica-agent-plugin": "bin/install.js"
   },
@@ -26,7 +26,14 @@
     "test:unit": "node --test tests/unit/install.test.js",
     "test:smoke": "bash tests/smoke/run-all.sh"
   },
-  "keywords": ["claude-code", "plugin", "multica", "ai-agent", "verification", "squad"],
+  "keywords": [
+    "claude-code",
+    "plugin",
+    "multica",
+    "ai-agent",
+    "verification",
+    "squad"
+  ],
   "author": "yangliang2",
   "license": "MIT",
   "repository": {

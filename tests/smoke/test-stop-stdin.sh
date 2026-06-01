@@ -73,5 +73,20 @@ else
   fail "DONE in transcript_path file: hook should not block (exit 2 = still blocking)"
 fi
 
+# --- Test 4: M7 — exit 2 (block) must write JSON with additionalContext to stdout ---
+reset_loop
+stdout=$(MULTICA_ISSUE_ID="$ISSUE_ID" MULTICA_WORKDIR="$WORKDIR" MULTICA_AGENT_SESSION=1 \
+  bash "$HOOK" <<< '{"stop_hook_active":true}' 2>/dev/null)
+if printf '%s' "$stdout" | python3 -c "
+import json, sys
+d = json.load(sys.stdin)
+ctx = d.get('hookSpecificOutput', {}).get('additionalContext', '')
+sys.exit(0 if ctx else 1)
+" 2>/dev/null; then
+  pass "exit 2 block writes additionalContext JSON to stdout (M7)"
+else
+  fail "exit 2 block missing additionalContext in stdout (M7)"
+fi
+
 echo "  ${PASS} passed, ${FAIL} failed"
 [[ $FAIL -eq 0 ]]

@@ -41,5 +41,20 @@ else
   fail "non-Bash tool should exit 0"
 fi
 
+# Test 4: C6 — missing deny list → fail-closed (exit 1, not exit 0)
+_tmp_root=$(mktemp -d)
+mkdir -p "${_tmp_root}/tools"   # tools/ dir exists but no safe-exec.deny.list
+echo '{"tool_name":"Bash","tool_input":{"command":"ls"}}' \
+  | MULTICA_ISSUE_ID=MUL-1 MULTICA_AGENT_SESSION=1 \
+    MULTICA_PLUGIN_ROOT="$_tmp_root" \
+    bash "$HOOK" 2>/dev/null
+_rc=$?
+rm -rf "$_tmp_root"
+if [[ $_rc -eq 1 ]]; then
+  pass "missing deny list blocks Bash (fail-closed)"
+else
+  fail "missing deny list should block Bash with exit 1 (got exit ${_rc})"
+fi
+
 echo "  ${PASS} passed, ${FAIL} failed"
 [[ $FAIL -eq 0 ]]

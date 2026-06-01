@@ -154,8 +154,9 @@ EV
 
 MULTICA_WORKDIR="$TMPDIR_SMOKE" \
 MULTICA_ISSUE_ID="$ISSUE_ID" \
-CLAUDE_TOOL_OUTPUT="$(printf '<promise>DONE</promise>')" \
-  bash "${PLUGIN_ROOT}/hooks/stop.sh" > /dev/null 2>&1
+  bash "${PLUGIN_ROOT}/hooks/stop.sh" \
+    <<< '{"stop_hook_active":true,"agent_output":"<promise>DONE</promise>"}' \
+    > /dev/null 2>&1
 exit_code=$?
 
 if [[ "$exit_code" -eq 0 ]]; then
@@ -364,8 +365,9 @@ EV
 # no squad-activity.marker present — audit warning should be written.
 MULTICA_WORKDIR="$tmpdir_s7" \
 MULTICA_ISSUE_ID="test-issue-123" \
-CLAUDE_TOOL_OUTPUT="$(printf '<promise>DONE</promise>')" \
-  bash "${PLUGIN_ROOT}/hooks/stop.sh" > /dev/null 2>&1
+  bash "${PLUGIN_ROOT}/hooks/stop.sh" \
+    <<< '{"stop_hook_active":true,"agent_output":"<promise>DONE</promise>"}' \
+    > /dev/null 2>&1
 stop_exit=$?
 
 if [[ $stop_exit -eq 0 ]]; then
@@ -410,8 +412,9 @@ EV
 
 MULTICA_WORKDIR="$tmpdir_s7" \
 MULTICA_ISSUE_ID="test-issue-123" \
-CLAUDE_TOOL_OUTPUT="$(printf '<promise>DONE</promise>')" \
-  bash "${PLUGIN_ROOT}/hooks/stop.sh" > /dev/null 2>&1
+  bash "${PLUGIN_ROOT}/hooks/stop.sh" \
+    <<< '{"stop_hook_active":true,"agent_output":"<promise>DONE</promise>"}' \
+    > /dev/null 2>&1
 
 if [[ ! -f "$tmpdir_s7/.multica/state/squad-audit-warning" ]]; then
   pass "no warning written when activity marker present"
@@ -532,7 +535,9 @@ EV
 
 # Run stop.sh with DONE signal
 MULTICA_WORKDIR="$tmpdir_s10" MULTICA_ISSUE_ID="test-prune-issue" \
-  CLAUDE_TOOL_OUTPUT="<promise>DONE</promise>" bash "${PLUGIN_ROOT}/hooks/stop.sh" 2>/dev/null || true
+  bash "${PLUGIN_ROOT}/hooks/stop.sh" \
+    <<< '{"stop_hook_active":true,"agent_output":"<promise>DONE</promise>"}' \
+    2>/dev/null || true
 
 if grep -q "This is new" "$tmpdir_s10/.multica/notepad.md" && \
    ! grep -q "This is old" "$tmpdir_s10/.multica/notepad.md"; then

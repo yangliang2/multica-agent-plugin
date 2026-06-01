@@ -15,6 +15,14 @@ This skill governs the full lifecycle of a Multica agent task from assignment to
 4. Read issue metadata for prior agent context: `<<cli:issue.metadata.list>>`
    Key fields to look for: blocked_reason (prior HITL), pr_url, pipeline_status, waiting_on
 5. Identify task, completed work, and missing pieces
+6. If the task requires code from a repository, check out via `multica repo checkout <url>`
+   After checkout, read repo-level learnings if present:
+   ```
+   {checkout_dir}/.multica/learnings.jsonl
+   ```
+   If the file exists, read entries with `confidence >= 7` and write them to
+   `## Working Memory` in `.multica/notepad.md` so they persist across the session.
+   Format: `[repo-learning] [{key}] (conf:{conf}) {insight}`
 
 **Exit condition:** Requirements are understood with no blocking unknowns.
 

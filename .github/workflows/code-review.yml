@@ -12,15 +12,26 @@ jobs:
     permissions:
       contents: read
       pull-requests: write
-      checks: write
+      statuses: write
     outputs:
       severity: ${{ steps.review.outputs.severity }}
       patches_needed: ${{ steps.review.outputs.patches_needed }}
 
     steps:
-      - uses: actions/checkout@v4.3.1
+      - name: Checkout trusted automation
+        uses: actions/checkout@v4.3.1
         with:
+          ref: ${{ github.event.repository.default_branch }}
           fetch-depth: 0
+          path: trusted
+
+      - name: Checkout PR branch
+        uses: actions/checkout@v4.3.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          path: pr
+          persist-credentials: false
 
       - uses: actions/setup-node@v4.4.0
         with:
@@ -28,9 +39,10 @@ jobs:
 
       - name: Run Claude review
         id: review
+        working-directory: pr
         run: |
           set +e
-          node .github/scripts/claude-review.js
+          node ../trusted/.github/scripts/claude-review.js
           rc=$?
           set -e
           echo "exit_code=$rc" >> "$GITHUB_OUTPUT"
@@ -42,6 +54,12 @@ jobs:
             else
               echo "patches_needed=false" >> "$GITHUB_OUTPUT"
             fi
+          elif [[ "$rc" -ne 0 ]]; then
+            echo "Claude review failed before producing findings" >&2
+            exit "$rc"
+          fi
+          if [[ "$rc" -ne 0 && "${SEV:-}" != "CRITICAL" && "${SEV:-}" != "HIGH" ]]; then
+            exit "$rc"
           fi
         env:
           ANTHROPIC_AUTH_TOKEN: ${{ secrets.ANTHROPIC_AUTH_TOKEN }}
@@ -50,7 +68,6 @@ jobs:
           PR_NUMBER: ${{ github.event.pull_request.number }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           AUTO_FIX_COUNT: "0"
-        continue-on-error: true
 
       - name: Upload findings
         if: always()
@@ -70,11 +87,20 @@ jobs:
       pull-requests: write
 
     steps:
-      - uses: actions/checkout@v4.3.1
+      - name: Checkout trusted automation
+        uses: actions/checkout@v4.3.1
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          fetch-depth: 0
+          path: trusted
+
+      - name: Checkout PR branch
+        uses: actions/checkout@v4.3.1
         with:
           ref: ${{ github.event.pull_request.head.ref }}
           fetch-depth: 0
-          token: ${{ secrets.GITHUB_TOKEN }}
+          path: pr
+          persist-credentials: false
 
       - uses: actions/setup-node@v4.4.0
         with:
@@ -91,6 +117,7 @@ jobs:
 
       - name: Check auto-fix attempt count
         id: check_count
+        working-directory: pr
         run: |
           COUNT=$(git log --oneline origin/master..HEAD | grep -c "fix(auto-review):" || true)
           NEXT=$((COUNT + 1))
@@ -104,18 +131,23 @@ jobs:
 
       - name: Run Claude auto-fix
         if: steps.check_count.outputs.skip == 'false'
-        run: node .github/scripts/claude-autofix.js
+        working-directory: pr
+        run: node ../trusted/.github/scripts/claude-autofix.js
         env:
           ANTHROPIC_AUTH_TOKEN: ${{ secrets.ANTHROPIC_AUTH_TOKEN }}
           ANTHROPIC_BASE_URL: ${{ secrets.ANTHROPIC_BASE_URL }}
 
       - name: Commit and push fix
-        if: steps.check_count.outputs.skip == 'false' && env.PATCHES_APPLIED != '0'
+        if: steps.check_count.outputs.skip == 'false' && env.PATCHES_APPLIED != '' && env.PATCHES_APPLIED != '0'
+        working-directory: pr
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           FIX_ANALYSIS: ${{ env.FIX_ANALYSIS }}
           MODIFIED_FILES: ${{ env.MODIFIED_FILES }}
+          PR_BRANCH: ${{ github.event.pull_request.head.ref }}
         run: |
+          git check-ref-format --branch "$PR_BRANCH"
+          git remote set-url origin "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           while IFS= read -r f; do
@@ -129,10 +161,10 @@ jobs:
           Attempt: ${{ steps.check_count.outputs.next }}/3
           EOF
           git commit -F /tmp/commit-msg.txt
-          git push origin HEAD:${{ github.event.pull_request.head.ref }}
+          git push origin "HEAD:${PR_BRANCH}"
 
       - name: Comment — fix applied
-        if: steps.check_count.outputs.skip == 'false' && env.PATCHES_APPLIED != '0'
+        if: steps.check_count.outputs.skip == 'false' && env.PATCHES_APPLIED != '' && env.PATCHES_APPLIED != '0'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           FIX_ANALYSIS: ${{ env.FIX_ANALYSIS }}
@@ -145,7 +177,7 @@ jobs:
           A new commit has been pushed. Re-running code review.
           EOF
           )
-          gh pr comment "${{ github.event.pull_request.number }}" --body "$BODY"
+          gh pr comment -R "$GITHUB_REPOSITORY" "${{ github.event.pull_request.number }}" --body "$BODY"
 
       - name: Comment — fix limit reached
         if: steps.check_count.outputs.skip == 'true'
@@ -158,4 +190,4 @@ jobs:
           Claude was unable to fully resolve the HIGH/CRITICAL issues after 3 attempts. Please review the inline comments and fix manually.
           EOF
           )
-          gh pr comment "${{ github.event.pull_request.number }}" --body "$BODY"
+          gh pr comment -R "$GITHUB_REPOSITORY" "${{ github.event.pull_request.number }}" --body "$BODY"

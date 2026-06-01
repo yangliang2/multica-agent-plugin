@@ -100,6 +100,22 @@ if [[ ! -f "$LOOP_JSON" ]]; then
   exit 0
 fi
 
+# C1: read stdin if available (Claude Code Stop hook contract: data via stdin JSON,
+#     not environment variables). Guard with [[ ! -t 0 ]] so tests without piped
+#     stdin don't block. Extract transcript_path for DONE detection.
+_hook_stdin=""
+if [[ ! -t 0 ]]; then
+  _hook_stdin=$(cat 2>/dev/null || true)
+fi
+_transcript_path=$(printf '%s' "$_hook_stdin" | python3 -c "
+import json, sys
+try:
+    d = json.load(sys.stdin)
+    print(d.get('transcript_path', ''))
+except Exception:
+    pass
+" 2>/dev/null || echo "")
+
 # Schema validation: reject malformed loop.json before acting on it
 _schema_ok=$(python3 -c "
 import json, sys, re
@@ -151,12 +167,21 @@ fi
 
 done_signal=false
 
-if [[ -n "${CLAUDE_TOOL_OUTPUT:-}" ]]; then
-  if printf '%s' "$CLAUDE_TOOL_OUTPUT" | grep -qE '<promise>DONE(:[A-Za-z0-9]+)?</promise>'; then
+# 1. Check stdin content (Claude Code Stop hook contract: agent output in stdin JSON)
+if [[ -n "$_hook_stdin" ]]; then
+  if printf '%s' "$_hook_stdin" | grep -qE '<promise>DONE(:[A-Za-z0-9]+)?</promise>' 2>/dev/null; then
     done_signal=true
   fi
 fi
 
+# 2. Check transcript file (pointed to by transcript_path in stdin JSON)
+if [[ "$done_signal" == "false" && -n "$_transcript_path" && -f "$_transcript_path" ]]; then
+  if tail -20 "$_transcript_path" | grep -qE '<promise>DONE(:[A-Za-z0-9]+)?</promise>' 2>/dev/null; then
+    done_signal=true
+  fi
+fi
+
+# 3. Daemon override: MULTICA_OUTPUT_FILE (explicit output file written by daemon)
 if [[ "$done_signal" == "false" && -n "${MULTICA_OUTPUT_FILE:-}" && -f "${MULTICA_OUTPUT_FILE}" ]]; then
   if grep -qE '<promise>DONE(:[A-Za-z0-9]+)?</promise>' "$MULTICA_OUTPUT_FILE"; then
     done_signal=true
@@ -169,8 +194,11 @@ if [[ "$done_signal" == "true" ]]; then
   if [[ -f "$_nonce_file" ]]; then
     _expected_nonce=$(cat "$_nonce_file")
     _nonce_found=false
-    if [[ -n "${CLAUDE_TOOL_OUTPUT:-}" ]]; then
-      printf '%s' "$CLAUDE_TOOL_OUTPUT" | grep -qF "<promise>DONE:${_expected_nonce}</promise>" && _nonce_found=true
+    if [[ -n "$_hook_stdin" ]]; then
+      printf '%s' "$_hook_stdin" | grep -qF "<promise>DONE:${_expected_nonce}</promise>" && _nonce_found=true
+    fi
+    if [[ "$_nonce_found" == "false" && -n "$_transcript_path" && -f "$_transcript_path" ]]; then
+      tail -20 "$_transcript_path" | grep -qF "<promise>DONE:${_expected_nonce}</promise>" && _nonce_found=true
     fi
     if [[ "$_nonce_found" == "false" && -n "${MULTICA_OUTPUT_FILE:-}" && -f "${MULTICA_OUTPUT_FILE}" ]]; then
       grep -qF "<promise>DONE:${_expected_nonce}</promise>" "$MULTICA_OUTPUT_FILE" && _nonce_found=true

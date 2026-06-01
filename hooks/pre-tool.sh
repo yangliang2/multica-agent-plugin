@@ -121,8 +121,8 @@ fi
 
 # Check against deny list (ERE patterns, case-insensitive)
 if [[ ! -f "$DENY_LIST" ]]; then
-  log_error "deny list not found at ${DENY_LIST} — destructive guard disabled"
-  exit 0
+  log_error "deny list not found at ${DENY_LIST} — fail-closed: Bash blocked until deny list is restored"
+  exit 1
 fi
 
 # M8: truncate command for comment — hash instead of raw string to avoid leaking secrets

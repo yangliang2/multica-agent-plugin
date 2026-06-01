@@ -1,5 +1,32 @@
 # Changelog
 
+## [2.1.0] - 2026-06-01
+
+### Fixed (security hardening — review C1/C6)
+
+- **C6 — fail-closed guard** (`hooks/pre-tool.sh`): when `safe-exec.deny.list`
+  cannot be found (e.g. `MULTICA_PLUGIN_ROOT` points to a wrong directory), the
+  destructive guard now blocks all Bash tool calls with `exit 1` instead of
+  silently disabling itself (`exit 0`). This closes the fail-open path that
+  allowed arbitrary commands when the deny list was missing.
+
+- **C1 — Stop hook stdin contract** (`hooks/stop.sh`): DONE signal detection now
+  follows the Claude Code hook contract (stdin JSON) instead of the
+  `CLAUDE_TOOL_OUTPUT` environment variable, which Claude Code never sets.
+  Detection order: (1) raw stdin content, (2) `transcript_path` file referenced
+  in stdin JSON, (3) `MULTICA_OUTPUT_FILE` daemon override. Nonce verification
+  (H4) updated to use the same three-path lookup. The `CLAUDE_TOOL_OUTPUT` env
+  var path has been removed.
+
+### Added
+
+- **`tests/smoke/test-pretool-guard.sh`**: new Test 4 — verifies that a missing
+  deny list results in `exit 1` (fail-closed), not `exit 0`.
+
+- **`tests/smoke/test-stop-stdin.sh`**: three cases covering C1 stdin contract —
+  DONE in raw stdin is accepted, missing DONE in stdin blocks, DONE in
+  `transcript_path` file is accepted.
+
 ## [2.0.0] - 2026-05-30
 
 ### Fixed (workflow hardening)

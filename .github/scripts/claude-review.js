@@ -7,16 +7,21 @@ const https = require('https');
 const http = require('http');
 const fs = require('fs');
 
+function parseEnvInt(value, fallback, min) {
+  const parsed = Number.parseInt(value || '', 10);
+  return Number.isFinite(parsed) && parsed >= min ? parsed : fallback;
+}
+
 const ANTHROPIC_AUTH_TOKEN = process.env.ANTHROPIC_AUTH_TOKEN || process.env.ANTHROPIC_API_KEY || '';
 const ANTHROPIC_BASE_URL = process.env.ANTHROPIC_BASE_URL || 'https://api.anthropic.com';
 const GITHUB_TOKEN = process.env.GITHUB_TOKEN || '';
 const GITHUB_REPO = process.env.GITHUB_REPOSITORY || '';
 const PR_NUMBER = process.env.PR_NUMBER || '';
 const HEAD_SHA = process.env.HEAD_SHA || '';
-const AUTO_FIX_COUNT = parseInt(process.env.AUTO_FIX_COUNT || '0', 10);
+const AUTO_FIX_COUNT = parseEnvInt(process.env.AUTO_FIX_COUNT, 0, 0);
 const MAX_AUTO_FIX = 3;
-const CLAUDE_API_MAX_ATTEMPTS = parseInt(process.env.CLAUDE_API_MAX_ATTEMPTS || '3', 10);
-const CLAUDE_API_RETRY_DELAY_MS = parseInt(process.env.CLAUDE_API_RETRY_DELAY_MS || '10000', 10);
+const CLAUDE_API_MAX_ATTEMPTS = parseEnvInt(process.env.CLAUDE_API_MAX_ATTEMPTS, 3, 1);
+const CLAUDE_API_RETRY_DELAY_MS = parseEnvInt(process.env.CLAUDE_API_RETRY_DELAY_MS, 10000, 0);
 
 if (!ANTHROPIC_AUTH_TOKEN || !GITHUB_TOKEN || !GITHUB_REPO || !PR_NUMBER || !HEAD_SHA) {
   console.error('Missing required env vars');
@@ -119,11 +124,7 @@ async function claudeApiWithRetry(messages, maxTokens = 4096) {
 // ── Main ──────────────────────────────────────────────────────────────────────
 
 async function main() {
-  // 1. Post a pending commit status (immune to the 2025-02-12 check-run PATCH restriction)
-  await setCommitStatus('pending', 'Claude is analyzing the diff…');
-  console.log(`Commit status set to pending for ${HEAD_SHA.slice(0, 8)}`);
-
-  // 2. Fetch PR diff
+  // 1. Fetch PR diff
   const diffRes = await request({
     url: `https://api.github.com/repos/${GITHUB_REPO}/pulls/${PR_NUMBER}`,
     method: 'GET',

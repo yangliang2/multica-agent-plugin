@@ -51,6 +51,7 @@ assert_contains "${ROOT_DIR}/.github/workflows/code-review.yml" "persist-credent
 assert_contains "${ROOT_DIR}/.github/workflows/code-review.yml" "statuses: write" "code review workflow can enforce commit statuses"
 assert_contains "${ROOT_DIR}/.github/scripts/claude-review.js" 'throw new Error(`Failed to set commit status' "code review fails closed when status updates fail"
 assert_contains "${ROOT_DIR}/.github/scripts/claude-review.js" "claudeApiWithRetry" "code review retries transient Claude API failures"
+assert_contains "${ROOT_DIR}/.github/scripts/claude-review.js" "parseEnvInt(process.env.CLAUDE_API_MAX_ATTEMPTS, 3, 1)" "code review validates retry attempt env var"
 assert_contains "${ROOT_DIR}/.github/scripts/claude-review.js" "Claude review skipped — Claude API unavailable." "code review clears pending status when API retries fail"
 assert_contains "${ROOT_DIR}/.github/scripts/claude-review.js" "Claude API permanent failure" "code review fails permanent API failures"
 assert_contains "${ROOT_DIR}/.github/workflows/auto-fix.yml" "node ../trusted/.github/scripts/ci-autofix.js" "CI auto-fix runs trusted fix script"

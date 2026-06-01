@@ -138,7 +138,7 @@ jobs:
           ANTHROPIC_BASE_URL: ${{ secrets.ANTHROPIC_BASE_URL }}
 
       - name: Commit and push fix
-        if: steps.check_count.outputs.skip == 'false' && env.PATCHES_APPLIED != '0'
+        if: steps.check_count.outputs.skip == 'false' && env.PATCHES_APPLIED != '' && env.PATCHES_APPLIED != '0'
         working-directory: pr
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -164,7 +164,7 @@ jobs:
           git push origin "HEAD:${PR_BRANCH}"
 
       - name: Comment — fix applied
-        if: steps.check_count.outputs.skip == 'false' && env.PATCHES_APPLIED != '0'
+        if: steps.check_count.outputs.skip == 'false' && env.PATCHES_APPLIED != '' && env.PATCHES_APPLIED != '0'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           FIX_ANALYSIS: ${{ env.FIX_ANALYSIS }}

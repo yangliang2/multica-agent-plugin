@@ -52,6 +52,17 @@ jobs:
         run: |
           shellcheck -S warning hooks/*.sh tools/*.sh uninstall.sh > /tmp/local-shellcheck.txt 2>&1 || true
 
+      - name: Initialize auto-fix outputs
+        run: |
+          echo "PATCHES_APPLIED=0" >> "$GITHUB_ENV"
+          {
+            echo "FIX_ANALYSIS<<EOF_AUTOFIX_INIT"
+            echo "auto-fix did not run"
+            echo "EOF_AUTOFIX_INIT"
+            echo "MODIFIED_FILES<<EOF_AUTOFIX_INIT"
+            echo "EOF_AUTOFIX_INIT"
+          } >> "$GITHUB_ENV"
+
       - name: Call Claude API for fix
         id: claude_fix
         working-directory: pr
@@ -65,7 +76,7 @@ jobs:
           LOCAL_SHELLCHECK_FILE: /tmp/local-shellcheck.txt
 
       - name: Verify fix locally
-        if: env.PATCHES_APPLIED != '0'
+        if: env.PATCHES_APPLIED != '' && env.PATCHES_APPLIED != '0'
         working-directory: pr
         env:
           GITHUB_ENV: /tmp/verify-env-blocked
@@ -76,10 +87,11 @@ jobs:
         run: |
           bash -n hooks/stop.sh hooks/session-start.sh hooks/pre-tool.sh
           shellcheck -S warning hooks/*.sh tools/*.sh uninstall.sh
+          npm ci --ignore-scripts
           npm test
 
       - name: Commit and push fix
-        if: env.PATCHES_APPLIED != '0'
+        if: env.PATCHES_APPLIED != '' && env.PATCHES_APPLIED != '0'
         working-directory: pr
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -105,7 +117,7 @@ jobs:
           git push origin "HEAD:${PR_BRANCH}"
 
       - name: Comment on PR if fix applied
-        if: env.PATCHES_APPLIED != '0'
+        if: env.PATCHES_APPLIED != '' && env.PATCHES_APPLIED != '0'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           FIX_ANALYSIS: ${{ env.FIX_ANALYSIS }}

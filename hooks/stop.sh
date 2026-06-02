@@ -594,12 +594,15 @@ prune_notepad
 
 squad_leader_audit
 
-# M7: write stdout JSON so Claude Code can relay the block reason to the model
+# M7: write stdout JSON so Claude Code can relay the block reason to the model.
+# Whitelist-validate iteration and phase before use to prevent any injection.
+_m7_iter="$iteration"; [[ "$_m7_iter" =~ ^[0-9]{1,4}$ ]] || _m7_iter="?"
+_m7_phase="$phase";    [[ "$_m7_phase" =~ ^[a-z]{1,20}$ ]] || _m7_phase="?"
 python3 -c "
 import json, sys
 it, ph = sys.argv[1], sys.argv[2]
 msg = f'[multica] Loop active at iteration {it}, phase={ph}. Continuing — emit <promise>DONE</promise> to complete.'
 print(json.dumps({'hookSpecificOutput': {'additionalContext': msg}}))
-" "$iteration" "$phase" 2>/dev/null || true
+" "$_m7_iter" "$_m7_phase" 2>/dev/null || true
 
 exit 2

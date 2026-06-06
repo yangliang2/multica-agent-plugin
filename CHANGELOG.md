@@ -1,5 +1,17 @@
 # Changelog
 
+## [2.2.0] - 2026-06-01
+
+### Fixed
+
+- **Version sync**: `VERSION`, `package.json`, and `.claude-plugin/marketplace.json`
+  were not bumped in v2.1.0. Corrected to `2.2.0`.
+
+- **M7 — Stop hook exit 2 feedback** (`hooks/stop.sh`): both `exit 2` (block)
+  paths now write a structured JSON message to stdout before exiting. Claude Code
+  relays this `hookSpecificOutput.additionalContext` to the model, preventing
+  the session from stalling with no context after a block.
+
 ## [2.1.0] - 2026-06-01
 
 ### Fixed (security hardening — review C1/C6)

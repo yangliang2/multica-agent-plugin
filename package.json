@@ -1,7 +1,7 @@
 {
   "name": "multica-agent-plugin",
-  "version": "2.2.0",
-  "description": "Claude Code agent plugin for the Multica ecosystem \u2014 verification Iron Law, Squad coordination, knowledge management",
+  "version": "2.3.0",
+  "description": "Claude Code agent plugin for the Multica ecosystem — verification Iron Law, Squad coordination, knowledge management",
   "bin": {
     "multica-agent-plugin": "bin/install.js"
   },

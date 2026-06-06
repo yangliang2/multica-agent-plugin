@@ -309,10 +309,22 @@ try:
         if not ev.exists() or ev.stat().st_size == 0:
             missing.append(sid)
             continue
-        # H3: evidence must contain at least one structured field
+        # H3: evidence must prove an actual command ran with a passing exit
+        # code. For a story marked passes=true we require:
+        #   - a `command:` line (records WHAT was run)
+        #   - an `exit_code:` line parseable as an integer, equal to 0
+        # A bare prose `summary:` is NOT sufficient — that is self-assessment,
+        # not machine-checkable proof. The exit_code==0 cross-check rejects the
+        # dishonest case where passes=true but the evidence shows a failure.
         ev_text = ev.read_text(errors='replace')
-        if not any(m in ev_text for m in ('exit_code:', 'command:', 'output_hash:', 'summary:')):
-            missing.append(f'{sid}(no-structure)')
+        has_command = bool(re.search(r'^\s*command:\s*\S', ev_text, re.MULTILINE))
+        m_exit = re.search(r'^\s*exit_code:\s*(-?\d+)\s*$', ev_text, re.MULTILINE)
+        if not has_command:
+            missing.append(f'{sid}(no-command)')
+        elif m_exit is None:
+            missing.append(f'{sid}(no-exit-code)')
+        elif int(m_exit.group(1)) != 0:
+            missing.append(f'{sid}(exit-code={m_exit.group(1)})')
     print(','.join(missing))
 except Exception as e:
     print(f'ERROR:{e}', file=sys.stderr)

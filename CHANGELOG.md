@@ -1,5 +1,37 @@
 # Changelog
 
+## [2.3.0] - 2026-06-01
+
+### Changed (honesty — review H2/H3)
+
+- **H2 — Removed vaporware "adapters" claims** (`README.md`): the repository has
+  no `adapters/` directory and no harness-specific integration shims. Removed the
+  "and adapters" phrasing from the description and "What This Is" sections, dropped
+  the `adapters/` line from the architecture tree, and rewrote the "Supported
+  Frameworks" table. It now states plainly that only Claude Code is supported and
+  that Codex / Gemini CLI / OpenCode are **not implemented** — replacing the
+  aspirational "Roadmap" rows that implied work in progress.
+
+- **H3 — Hardened the evidence gate** (`hooks/stop.sh`): a story marked
+  `passes: true` now requires its evidence file to contain BOTH a `command:` line
+  and an integer `exit_code:` line equal to `0`. The previous check accepted any
+  single structured field — including a bare prose `summary:` — which let an agent
+  self-certify with no proof a command ever ran. The hook now also cross-checks
+  the recorded exit code: `passes: true` with a non-zero `exit_code:` is rejected.
+
+- **H3 — Documented the gate's limits honestly** (`skills/core/verification.md`):
+  tightened the documented evidence rules to match the hook, and added a "What
+  this gate can and cannot enforce" section making clear the check is structural,
+  not semantic — it cannot verify the recorded command is relevant or that the
+  exit code was transcribed faithfully.
+
+### Added
+
+- **`tests/smoke/test-stop-evidence-structure.sh`**: expanded from 4 to 7 cases —
+  prose-`summary:`-only is now rejected, `command:` + `exit_code: 0` is accepted,
+  non-zero `exit_code:` is rejected even when `passes: true` (honesty
+  cross-check), and `command:` without `exit_code:` is rejected.
+
 ## [2.2.0] - 2026-06-01
 
 ### Fixed

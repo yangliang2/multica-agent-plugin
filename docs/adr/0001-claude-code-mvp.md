@@ -111,7 +111,13 @@ and context injection manually.
 
 ### 4.2 Post-MVP Extension Path
 
-Harness adapters will be introduced in subsequent minor versions:
+> **Superseded (2026-06-01, v2.3.0):** The version timeline below was never
+> realized. No harness adapters have been built and none are scheduled. As of
+> v2.3.0 the plugin supports Claude Code only; the table is retained as the
+> original MVP-era intent, not as a commitment. See `KNOWN-LIMITATIONS.md` for
+> the current honest status.
+
+Harness adapters were originally planned for subsequent minor versions:
 
 | Version | Harness | Mechanism |
 |---------|---------|-----------|

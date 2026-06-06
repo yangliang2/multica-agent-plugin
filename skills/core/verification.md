@@ -40,9 +40,39 @@ summary: <1-3 lines of key output — test counts, build result, key assertion>
 
 **Rules:**
 - File must exist and be non-empty before `passes: true` is written to `loop.json`
-- `exit_code` must be 0 for a passing claim
-- The stop hook verifies evidence file existence — missing file causes DONE rejection
-- If the story's acceptance criterion is "no tests exist", write `exit_code: 0` with `summary: no-tests-required — <rationale>`
+- A `command:` line is **required** — it records the exact command that was run
+- An `exit_code:` line is **required** and must parse as an integer
+- `exit_code` must be `0` for a passing claim — the stop hook cross-checks this:
+  if a story is marked `passes: true` but its evidence shows a non-zero
+  `exit_code`, DONE is rejected
+- A prose `summary:` alone is **not** sufficient — it is self-assessment, not
+  machine-checkable proof. The hook ignores it for the pass/fail decision.
+- The stop hook enforces all of the above — a missing/empty file, missing
+  `command:`, missing/unparseable `exit_code:`, or non-zero `exit_code:` all
+  cause DONE rejection
+- If the story's acceptance criterion is "no tests exist", still write a real
+  command (e.g. `command: ls tests/ || true`) with `exit_code: 0` and a
+  `summary: no-tests-required — <rationale>`
+
+### What this gate can and cannot enforce
+
+The evidence gate is a **structural** check, not a semantic one. Be honest
+about its limits:
+
+- It **can** verify that a command was named and that its recorded exit code is
+  0. It rejects the most common dishonest pattern: claiming `passes: true` while
+  the evidence shows a failure or shows no command was run at all.
+- It **cannot** verify that the recorded `command:` is actually relevant to the
+  story, that the `exit_code:` was transcribed faithfully from a real run, or
+  that the command's output truly demonstrates the acceptance criterion. A
+  determined agent can still write a passing-looking evidence file for a command
+  that proves nothing.
+- The `output_hash:` field exists so that a reviewer (or a future external
+  checker) can correlate the claimed output against an independent capture. It
+  is not currently re-derived by the hook.
+
+Treat the gate as a floor, not a guarantee. The Iron Law still binds you: run
+the real command, read the real output, and record it faithfully.
 
 ## Claim-to-Proof Table
 

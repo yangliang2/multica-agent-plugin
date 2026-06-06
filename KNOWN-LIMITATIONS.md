@@ -56,16 +56,19 @@ edit `tools/safe-exec.deny.list` directly.
 
 ## Post-MVP Harness Extension Paths
 
-Other harnesses are on the roadmap. See `.omc/plans/multica-agent-plugin.md`
-for the planned adapter architecture. Priority order:
+This plugin supports **Claude Code only**. There is no adapter architecture in
+the repository, and no other harness is implemented. The directions below are
+**aspirational, not committed roadmap** — there is no schedule and no work in
+progress. They record which harnesses would be candidates *if* multi-harness
+support is ever pursued:
 
 1. **Codex** — CLI-native, similar hook surface
 2. **Cursor** — IDE-embedded; requires different context injection mechanism
 3. **Gemini Code Assist** — Google Cloud context; auth and workspace model differ
 4. **Kimi** — International deployment; i18n and locale handling needed
 
-Until adapters ship, the `> Degradation notice:` blocks in each advanced skill
-document the expected fallback behavior per harness.
+The `> Degradation notice:` blocks in each advanced skill document the expected
+fallback behavior when a skill is run outside Claude Code.
 
 ## No Automatic CLI Reference Update
 

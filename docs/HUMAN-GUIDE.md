@@ -63,7 +63,52 @@ daemon is expected to create this directory before spawning an agent.
 
 ---
 
-## §2 Feature Overview
+## §2 Comment Protocol
+
+Agents and humans communicate through structured comment signals. This section defines the full signal grammar.
+
+### Agent to User signals
+
+The agent posts these signals to mark lifecycle events and request user action:
+
+| Signal | When posted | Expected user response |
+|--------|-------------|----------------------|
+| `[spec:vN]` | End of spec phase | `[proceed]` or `[revise: <feedback>]` |
+| `[demo:vN]` | End of demo phase | `[looks-right]` or `[wrong: <feedback>]` |
+| `[result]` | End of result phase | Confirmation or `[abort]` |
+| `[breakdown:vN]` | End of planning mode decomposition | `[proceed]` or `[revise: <feedback>]` |
+| `[checkpoint:N]` | Execute phase iteration count (posted at 5+) | No action needed |
+| `[verification]` | End of verify phase | No action needed |
+| `[loop-exhausted]` | Execute hit 50-iteration cap | Human intervention required |
+| `[loop-stuck]` | Same failure 3+ times | Human intervention required |
+| `[phase] src→target` | Phase transition marker | No action needed |
+
+### User to Agent signals
+
+Post these in issue comments to steer the agent. One signal per comment line — do not bundle multiple signals on one line.
+
+| Signal | Meaning |
+|--------|---------|
+| `[proceed]` | Approve current spec/demo/breakdown; agent continues to next phase |
+| `[revise: <feedback>]` | Reject and revise; agent regenerates with feedback |
+| `[looks-right]` | Approve demo; agent continues to execute phase |
+| `[wrong: <feedback>]` | Demo is wrong; agent fixes and reposts |
+| `[abort]` | Stop the task; agent sets status blocked and exits |
+| `[retry]` | Retry the current phase from scratch |
+| `[approve:task-x]` | Approve a specific sub-task in a breakdown |
+| `[skip:story-x]` | Skip a specific story in a breakdown |
+
+### Rules
+
+- One signal per comment line; do not bundle multiple signals on one line.
+- `vN` increments each time the agent regenerates (v1, v2, v3…).
+- `[wrong:]` and `[revise:]` signals are automatically captured as repo-scoped learnings (confidence=9).
+- Do not @mention the agent in response comments — it triggers off `on_comment` automatically.
+- `[HITL]` is a separate signal prefix used only by the HITL protocol; it is not part of the phase signal grammar above.
+
+---
+
+## §3 Feature Overview
 
 ### Verification Iron Law
 
@@ -175,7 +220,7 @@ agent is running low on context. Re-enqueue the issue to continue.
 
 ---
 
-## §3 For Reviewers
+## §4 For Reviewers
 
 You do not need to understand the agent internals to review its work. This section
 explains the comment trail.
@@ -218,7 +263,7 @@ re-enqueued automatically. No action required unless you want to redirect.
 
 ---
 
-## §4 Troubleshooting
+## §5 Troubleshooting
 
 **1. Agent reported completion but issue status did not change.**
 The agent did not call `<<cli:issue.status>> done` or the call failed silently.

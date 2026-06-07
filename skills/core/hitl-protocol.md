@@ -4,6 +4,8 @@ This skill defines when and how an agent requests human intervention inside a Mu
 
 AskUserQuestion is **disabled**. The only sanctioned HITL path is: write a comment, set `blocked`, exit.
 
+HITL uses `[HITL]` as its signal prefix, separate from the phase signals defined in `docs/HUMAN-GUIDE.md §2 Comment Protocol`. Phase signals (`[phase]`, `[checkpoint:N]`, `[verification]`, `[result]`, etc.) are emitted by the workflow state machine; `[HITL]` is emitted only when the agent cannot proceed without human input.
+
 ---
 
 ## When to Trigger HITL

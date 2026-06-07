@@ -120,7 +120,8 @@ except Exception:
 _schema_ok=$(python3 -c "
 import json, sys, re
 ID_RE = re.compile(r'^[A-Za-z0-9._-]{1,64}$')
-PHASE_OK = {'setup','execution','execute','deslop','complete','blocked','verification','report'}
+PHASE_OK = {'setup','execution','execute','deslop','complete','blocked','verification','report',
+            'spec','plan','demo','verify','result','done'}
 try:
     d = json.load(open(sys.argv[1]))
     iid = d.get('issue_id', '')
@@ -139,6 +140,22 @@ try:
         sid = s.get('id', '')
         if sid and not ID_RE.match(sid):
             print('bad_story_id'); sys.exit(0)
+    # v0.5.0 optional fields: mode, spec_version, verification_cmd, progress, exit2_triggers_per_session
+    mode = d.get('mode', 'execution')
+    if not isinstance(mode, str) or len(mode) > 64:
+        print('bad_mode'); sys.exit(0)
+    sv = d.get('spec_version', 0)
+    if not isinstance(sv, (int, float)) or int(sv) < 0:
+        print('bad_spec_version'); sys.exit(0)
+    vc = d.get('verification_cmd', '')
+    if not isinstance(vc, str) or len(vc) > 512:
+        print('bad_verification_cmd'); sys.exit(0)
+    prog = d.get('progress', {})
+    if not isinstance(prog, dict):
+        print('bad_progress'); sys.exit(0)
+    e2t = d.get('exit2_triggers_per_session', 0)
+    if not isinstance(e2t, (int, float)) or int(e2t) < 0:
+        print('bad_exit2_triggers'); sys.exit(0)
     print('ok')
 except Exception as e:
     print(f'parse_error')
@@ -212,13 +229,36 @@ if [[ "$done_signal" == "true" ]]; then
 fi
 
 if [[ "$done_signal" == "false" ]]; then
-  if [[ -n "$(find "$LOOP_JSON" -mmin -1 2>/dev/null)" ]]; then
+  # v0.5.0: suppress exit-2 only for phases that use the exit-0 checkpoint model.
+  # spec/demo/plan/verify/result/done exit cleanly; execute + all legacy phases (empty,
+  # "execution", "setup", etc.) retain exit-2 re-entry behavior for backward compat.
+  _exit2_suppressed=false
+  case "$phase" in spec|demo|plan|verify|result|done) _exit2_suppressed=true ;; esac
+  if [[ "$_exit2_suppressed" == "false" ]] && [[ -n "$(find "$LOOP_JSON" -mmin -1 2>/dev/null)" ]]; then
     echo "[stop.sh] loop active, no DONE signal — blocking session stop" >&2
     # M7: write stdout JSON so Claude Code can relay the block reason to the model
     python3 -c "
 import json, sys
 print(json.dumps({'hookSpecificOutput': {'additionalContext': sys.argv[1]}}))
 " "[multica] Loop still active — emit <promise>DONE</promise> (with nonce if required) to complete the session." 2>/dev/null || true
+    # v0.5.0: increment exit2_triggers_per_session counter in loop.json on each re-enter
+    if command -v python3 >/dev/null 2>&1 && [[ -f "$LOOP_JSON" ]]; then
+      python3 -c "
+import json, sys, os
+from pathlib import Path
+p = Path(sys.argv[1])
+try:
+    d = json.load(p.open())
+    d['exit2_triggers_per_session'] = int(d.get('exit2_triggers_per_session', 0)) + 1
+    tmp = str(p) + '.tmp'
+    with open(tmp, 'w') as f:
+        json.dump(d, f, indent=2)
+        f.write('\n')
+    os.replace(tmp, str(p))
+except Exception:
+    sys.exit(0)
+" "$LOOP_JSON" 2>/dev/null || true
+    fi
     exit 2
   fi
 fi
@@ -242,6 +282,48 @@ squad_leader_audit() {
     fi
   fi
 }
+
+# v0.5.0 phase dispatch: checkpoint phases (spec, demo) and auto-advance phases (plan, verify)
+# skip the stories/evidence gate and go directly to learning routing + exit 0
+_v050_phase_exit=false
+_v050_skip_gate=false
+case "$phase" in
+  spec|demo|plan|verify)
+    _v050_skip_gate=true
+    ;;
+esac
+
+if [[ "$_v050_skip_gate" == "true" ]] && [[ "$done_signal" == "true" ]]; then
+  # Auto-advance phase: update loop.json.phase to next phase
+  _next_phase=""
+  case "$phase" in
+    plan)   _next_phase="demo" ;;
+    verify) _next_phase="result" ;;
+    # spec and demo: next phase is set by agent on next session based on user signal
+  esac
+  if [[ -n "$_next_phase" ]] && command -v python3 >/dev/null 2>&1 && [[ -f "$LOOP_JSON" ]]; then
+    python3 -c "
+import json, sys
+from pathlib import Path
+p = Path(sys.argv[1])
+try:
+    d = json.load(p.open())
+    d['phase'] = sys.argv[2]
+    tmp = str(p) + '.tmp'
+    with open(tmp, 'w') as f:
+        json.dump(d, f, indent=2)
+        f.write('\n')
+    import os; os.replace(tmp, str(p))
+except Exception as e:
+    sys.exit(0)
+" "$LOOP_JSON" "$_next_phase" 2>/dev/null || true
+  fi
+  # Run learning routing (always beneficial) then exit cleanly
+  # Fall through to the learnings block below by jumping past the gate
+  done_signal=false  # prevent the evidence gate from firing
+  # But mark that we want to run learnings and exit, not loop
+  _v050_phase_exit=true
+fi
 
 if [[ "$done_signal" == "true" ]]; then
   # Cross-check: if loop.json exists, verify no stories are still pending
@@ -327,7 +409,7 @@ except Exception as e:
   fi
 fi
 
-if [[ "$done_signal" == "true" ]]; then
+if [[ "$done_signal" == "true" ]] || [[ "${_v050_phase_exit:-false}" == "true" ]]; then
   # ---------------------------------------------------------------------------
   # Learnings routing: dispatch by scope to correct storage path
   # L1 (workspace) → multica workspace context field
@@ -347,8 +429,23 @@ if [[ "$done_signal" == "true" ]]; then
       _repo_dirs+=("$_d")
     done < <(find "$MULTICA_WORKDIR" -maxdepth 2 -name ".git" -type d -print0 2>/dev/null               | sed -z 's|/.git||')
 
-    # Route learnings by scope
-    python3 - "$_learnings" "$MULTICA_WORKDIR" "${_repo_dirs[@]+"${_repo_dirs[@]}"}" <<'SCOPE_PY'
+    # Route learnings by scope.
+    # FIX (REQ-05-03): previously SCOPE_PY ran without command substitution so its
+    # stdout was discarded, and the parser loop read from a dead SCOPE_PY2 heredoc
+    # that emitted nothing.  Collapsed into one invocation via process substitution
+    # so the parser loop reads directly from SCOPE_PY's stdout.
+    _workspace_learnings=()
+    _repo_learnings_dirs=()
+    while IFS= read -r _sline; do
+      case "$_sline" in
+        WORKSPACE_LEARNING:*)
+          _workspace_learnings+=("${_sline#WORKSPACE_LEARNING:}")
+          ;;
+        REPO_LEARNINGS_DIR:*)
+          _repo_learnings_dirs+=("${_sline#REPO_LEARNINGS_DIR:}")
+          ;;
+      esac
+    done < <(python3 - "$_learnings" "$MULTICA_WORKDIR" "${_repo_dirs[@]+"${_repo_dirs[@]}"}" <<'SCOPE_PY'
 import json, sys, os, re
 from pathlib import Path
 
@@ -429,25 +526,7 @@ if len(issue_entries) != sum(1 for _ in open(learnings_file) if _.strip()):
     os.replace(tmp, learnings_file)
     print("REWRITTEN_ISSUE_LEARNINGS")
 SCOPE_PY
-
-    # Parse routing output
-    _workspace_learnings=()
-    _repo_learnings_dirs=()
-    while IFS= read -r _sline; do
-      case "$_sline" in
-        WORKSPACE_LEARNING:*)
-          _workspace_learnings+=("${_sline#WORKSPACE_LEARNING:}")
-          ;;
-        REPO_LEARNINGS_DIR:*)
-          _repo_learnings_dirs+=("${_sline#REPO_LEARNINGS_DIR:}")
-          ;;
-      esac
-    done < <(python3 - "$_learnings" "$MULTICA_WORKDIR" "${_repo_dirs[@]+"${_repo_dirs[@]}"}" <<'SCOPE_PY2'
-import json, sys, os, re
-from pathlib import Path
-SCOPE_PY2
-    # (output already processed above; this is a dummy to close the loop)
-    true)
+    )
 
     # L1: append workspace learnings to multica workspace context
     if [[ ${#_workspace_learnings[@]} -gt 0 ]] && command -v multica >/dev/null 2>&1; then
@@ -502,6 +581,12 @@ for line in sys.stdin:
 ' ',' | sed 's/,$//')
       fi
     fi
+  fi
+
+  # v0.5.0: checkpoint/auto-advance phase — exit cleanly after learnings
+  if [[ "${_v050_phase_exit:-false}" == "true" ]]; then
+    squad_leader_audit
+    exit 0
   fi
 
   _loop_complete_msg="[loop-complete] Done at iteration ${iteration}. Knowledge: ${_learnings_count} learnings on record."

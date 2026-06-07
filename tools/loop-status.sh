@@ -48,26 +48,45 @@ bounces_file = sys.argv[3]
 
 data = json.loads(Path(loop_file).read_text())
 
-active     = data.get('active', False)
-iteration  = data.get('iteration', 0)
-max_iter   = data.get('max_iterations', 50)
-phase      = data.get('phase', 'unknown')
-stories    = data.get('stories', [])
-started_at = data.get('started_at', '')
-last_ckpt  = data.get('last_checkpoint_at', '')
+active        = data.get('active', False)
+iteration     = data.get('iteration', 0)
+max_iter      = data.get('max_iterations', 50)
+phase         = data.get('phase', 'unknown')
+mode          = data.get('mode', 'execution')
+spec_version  = data.get('spec_version', 0)
+stories       = data.get('stories', [])
+started_at    = data.get('started_at', '')
+last_ckpt     = data.get('last_checkpoint_at', '')
+
+# progress block — prefer explicit progress.pct when set, else derive from stories
+progress      = data.get('progress', {})
+prog_summary  = progress.get('summary', '')
+prog_pct_raw  = progress.get('pct', None)
+prog_steps    = progress.get('completed_steps', [])
+prog_current  = progress.get('current_step', '')
 
 done    = sum(1 for s in stories if s.get('passes'))
 total   = len(stories)
-pct     = int(done / total * 100) if total else 0
+story_pct = int(done / total * 100) if total else 0
+# Use explicit progress.pct if non-zero, otherwise fall back to story-derived pct
+pct     = int(prog_pct_raw) if prog_pct_raw else story_pct
 bar_len = 20
-filled  = int(bar_len * done / total) if total else 0
+filled  = int(bar_len * pct / 100) if pct else 0
 bar     = '█' * filled + '░' * (bar_len - filled)
 
-print(f"Issue:      {issue_id}")
-print(f"Status:     {'active' if active else 'inactive'}")
-print(f"Phase:      {phase}")
-print(f"Iteration:  {iteration}/{max_iter}")
-print(f"Progress:   [{bar}] {done}/{total} stories ({pct}%)")
+print(f"Issue:        {issue_id}")
+print(f"Status:       {'active' if active else 'inactive'}")
+print(f"Mode:         {mode}")
+print(f"Spec version: {spec_version}")
+print(f"Phase:        {phase}")
+print(f"Iteration:    {iteration}/{max_iter}")
+print(f"Progress:     [{bar}] {pct}%  ({done}/{total} stories)")
+if prog_summary:
+    print(f"  Summary:    {prog_summary}")
+if prog_current:
+    print(f"  Current:    {prog_current}")
+if prog_steps:
+    print(f"  Completed:  {', '.join(str(s) for s in prog_steps)}")
 print()
 
 for s in stories:

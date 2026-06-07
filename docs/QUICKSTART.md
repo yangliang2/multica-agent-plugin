@@ -15,10 +15,10 @@ Get an agent handling your first issue in 5 minutes.
 
 ## Installation
 
-**Option A (recommended) — npx:**
+**Option A (recommended) — npx from GitHub:**
 
 ```bash
-npx multica-agent-plugin
+npx github:yangliang2/multica-agent-plugin
 ```
 
 One command handles everything: detects dependencies, copies hooks to
@@ -32,12 +32,12 @@ writes `MULTICA_PLUGIN_ROOT` to your shell profile automatically.
 ```
 
 Run this inside Claude Code to install skills via the native plugin system.
-Then run `npx multica-agent-plugin` once to register hooks.
+Then run `npx github:yangliang2/multica-agent-plugin` once to register hooks.
 
 ## Verify
 
 ```bash
-npx multica-agent-plugin --verify
+npx github:yangliang2/multica-agent-plugin --verify
 ```
 
 Checks dependencies, hook registration, and `settings.json` status.

@@ -2,7 +2,7 @@
 
 ## Node.js Requirement for npx Installer
 
-`npx multica-agent-plugin` requires **Node.js >= 16**. On systems with an older
+`npx github:yangliang2/multica-agent-plugin` requires **Node.js >= 16**. On systems with an older
 Node.js version, use the fallback:
 
 ```bash

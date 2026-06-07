@@ -18,7 +18,7 @@ Audience: operators, developers, and issue reviewers.
 ### Installation
 
 ```bash
-npx multica-agent-plugin
+npx github:yangliang2/multica-agent-plugin
 ```
 
 The installer verifies the `multica` CLI is present, copies hooks to
@@ -29,7 +29,7 @@ The installer verifies the `multica` CLI is present, copies hooks to
 To verify the installation:
 
 ```bash
-npx multica-agent-plugin --verify
+npx github:yangliang2/multica-agent-plugin --verify
 ```
 
 `MULTICA_PLUGIN_ROOT` is managed by the installer and does not need to be exported
@@ -236,7 +236,7 @@ Who can fix this: **operator** (re-enqueue) or **reviewer** (reply to [HITL])
 **3. Squad activity not recorded — audit warning present.**
 The squad leader ended its turn without calling `multica squad activity`. `stop.sh`
 called `multica squad activity <id> failed` automatically.
-Fix: check whether the `SessionStart` hook fires (run `npx multica-agent-plugin --verify`
+Fix: check whether the `SessionStart` hook fires (run `npx github:yangliang2/multica-agent-plugin --verify`
 to confirm hook registration). Re-enqueue the issue if the session terminated abnormally.
 Who can fix this: **operator**
 

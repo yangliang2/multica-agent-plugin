@@ -3,7 +3,7 @@
 # path (~/.claude/hooks/multica/) required by the current hook registration.
 # Use the npm installer instead.
 echo "[ERROR] install.sh is not functional in this version."
-echo "  Use: npx multica-agent-plugin"
+echo "  Use: npx github:yangliang2/multica-agent-plugin"
 echo "  Or:  node bin/install.js"
 echo ""
 echo "If Node.js is unavailable, install Node.js >= 16 first:"

@@ -47,10 +47,10 @@ multica-agent-plugin/
 
 ## Installation
 
-**Option A — npm (recommended):**
+**Option A — GitHub (recommended):**
 
 ```bash
-npx multica-agent-plugin
+npx github:yangliang2/multica-agent-plugin
 ```
 
 **Option B — Claude Code plugin marketplace:**
@@ -59,12 +59,12 @@ npx multica-agent-plugin
 /plugin marketplace add https://github.com/yangliang2/multica-agent-plugin
 ```
 
-Then run `npx multica-agent-plugin` to register hooks.
+Then run `npx github:yangliang2/multica-agent-plugin` to register hooks.
 
 **Verify:**
 
 ```bash
-npx multica-agent-plugin --verify
+npx github:yangliang2/multica-agent-plugin --verify
 ```
 
 See [docs/QUICKSTART.md](docs/QUICKSTART.md) for full setup instructions.

@@ -26,7 +26,7 @@ fi
 # Fallback: direct python3 removal (matches npm-installed hook paths)
 if ! command -v python3 >/dev/null 2>&1; then
   echo "[uninstall] ERROR: python3 and node are both unavailable." >&2
-  echo "  Install Node.js >= 16 and run: npx multica-agent-plugin --uninstall" >&2
+  echo "  Install Node.js >= 16 and run: npx github:yangliang2/multica-agent-plugin --uninstall" >&2
   exit 1
 fi
 

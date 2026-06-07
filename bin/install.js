@@ -293,7 +293,7 @@ if (args.includes('--verify')) {
 } else if (args.includes('--help') || args.includes('-h')) {
   console.log(`multica-agent-plugin v${VERSION}
 
-Usage: npx multica-agent-plugin [options]
+Usage: npx github:yangliang2/multica-agent-plugin [options]
 
 Options:
   (no args)    Install hooks and configure environment

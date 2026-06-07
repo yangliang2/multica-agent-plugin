@@ -38,7 +38,7 @@ if [[ -f "$SETTINGS" ]]; then
     if grep -q "$hook" "$SETTINGS" 2>/dev/null; then
       echo "  $hook: registered ✓"
     else
-      echo "  $hook: NOT REGISTERED ✗ — run: npx multica-agent-plugin"
+      echo "  $hook: NOT REGISTERED ✗ — run: npx github:yangliang2/multica-agent-plugin"
     fi
   done
 else

@@ -296,7 +296,7 @@ except Exception:
 
       context_parts+=("## Loop State"$'\n'"$loop_hint")
 
-      # v0.5.0: inject phase-specific action guidance
+      # v2.3.0: inject phase-specific action guidance
       _phase_guidance=""
       case "$phase" in
         spec)

@@ -140,7 +140,7 @@ try:
         sid = s.get('id', '')
         if sid and not ID_RE.match(sid):
             print('bad_story_id'); sys.exit(0)
-    # v0.5.0 optional fields: mode, spec_version, verification_cmd, progress, exit2_triggers_per_session
+    # v2.3.0 optional fields: mode, spec_version, verification_cmd, progress, exit2_triggers_per_session
     mode = d.get('mode', 'execution')
     if not isinstance(mode, str) or len(mode) > 64:
         print('bad_mode'); sys.exit(0)
@@ -229,7 +229,7 @@ if [[ "$done_signal" == "true" ]]; then
 fi
 
 if [[ "$done_signal" == "false" ]]; then
-  # v0.5.0: suppress exit-2 only for phases that use the exit-0 checkpoint model.
+  # v2.3.0: suppress exit-2 only for phases that use the exit-0 checkpoint model.
   # spec/demo/plan/verify/result/done exit cleanly; execute + all legacy phases (empty,
   # "execution", "setup", etc.) retain exit-2 re-entry behavior for backward compat.
   _exit2_suppressed=false
@@ -241,7 +241,7 @@ if [[ "$done_signal" == "false" ]]; then
 import json, sys
 print(json.dumps({'hookSpecificOutput': {'additionalContext': sys.argv[1]}}))
 " "[multica] Loop still active — emit <promise>DONE</promise> (with nonce if required) to complete the session." 2>/dev/null || true
-    # v0.5.0: increment exit2_triggers_per_session counter in loop.json on each re-enter
+    # v2.3.0: increment exit2_triggers_per_session counter in loop.json on each re-enter
     if command -v python3 >/dev/null 2>&1 && [[ -f "$LOOP_JSON" ]]; then
       python3 -c "
 import json, sys, os
@@ -283,7 +283,7 @@ squad_leader_audit() {
   fi
 }
 
-# v0.5.0 phase dispatch: checkpoint phases (spec, demo) and auto-advance phases (plan, verify)
+# v2.3.0 phase dispatch: checkpoint phases (spec, demo) and auto-advance phases (plan, verify)
 # skip the stories/evidence gate and go directly to learning routing + exit 0
 _v050_phase_exit=false
 _v050_skip_gate=false
@@ -583,7 +583,7 @@ for line in sys.stdin:
     fi
   fi
 
-  # v0.5.0: checkpoint/auto-advance phase — exit cleanly after learnings
+  # v2.3.0: checkpoint/auto-advance phase — exit cleanly after learnings
   if [[ "${_v050_phase_exit:-false}" == "true" ]]; then
     squad_leader_audit
     exit 0

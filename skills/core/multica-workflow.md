@@ -203,7 +203,7 @@ this is an autopilot run-only task:
 ## loop.json Schema
 
 All fields are optional on read; defaults are applied by stop.sh and session-start.sh.
-Old v0.4.0 files that lack v0.5.0 fields remain valid.
+Old v2.2.0 files that lack v2.3.0 fields remain valid.
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
@@ -217,14 +217,14 @@ Old v0.4.0 files that lack v0.5.0 fields remain valid.
 | `last_updated` | string | `""` | ISO 8601 timestamp of last write |
 | `nonce` | string | `""` | DONE-signal nonce for this session |
 | `evidence_file` | string | `""` | Path to verification evidence artifact |
-| `mode` | string | `"execution"` | Loop execution mode (v0.5.0+) |
-| `spec_version` | integer | `0` | Schema version; 0 = v0.4.0 compat, 1 = v0.5.0 (v0.5.0+) |
-| `verification_cmd` | string | `""` | Shell command to run during verify phase (v0.5.0+) |
-| `progress.summary` | string | `""` | Human-readable progress summary (v0.5.0+) |
-| `progress.pct` | integer | `0` | Explicit progress percentage 0–100; overrides story-derived pct in loop-status (v0.5.0+) |
-| `progress.completed_steps` | array | `[]` | List of completed step identifiers (v0.5.0+) |
-| `progress.current_step` | string | `""` | Identifier of the step currently in progress (v0.5.0+) |
-| `exit2_triggers_per_session` | integer | `0` | Count of exit-2 stop-hook triggers in this session; incremented by execute-phase exit-2 (v0.5.0+) |
+| `mode` | string | `"execution"` | Loop execution mode (v2.3.0+) |
+| `spec_version` | integer | `0` | Schema version; 0 = v2.2.0 compat, 1 = v2.3.0 (v2.3.0+) |
+| `verification_cmd` | string | `""` | Shell command to run during verify phase (v2.3.0+) |
+| `progress.summary` | string | `""` | Human-readable progress summary (v2.3.0+) |
+| `progress.pct` | integer | `0` | Explicit progress percentage 0–100; overrides story-derived pct in loop-status (v2.3.0+) |
+| `progress.completed_steps` | array | `[]` | List of completed step identifiers (v2.3.0+) |
+| `progress.current_step` | string | `""` | Identifier of the step currently in progress (v2.3.0+) |
+| `exit2_triggers_per_session` | integer | `0` | Count of exit-2 stop-hook triggers in this session; incremented by execute-phase exit-2 (v2.3.0+) |
 
 ---
 

@@ -1,6 +1,6 @@
-# Multica Agent Plugin — v0.5.0 Structured Requirements
+# Multica Agent Plugin — v2.3.0 Structured Requirements
 
-**Status:** Design Phase | **Version:** v0.5.0 | **Date:** 2026-06-07
+**Status:** Design Phase | **Version:** v2.3.0 | **Date:** 2026-06-07
 
 ---
 
@@ -16,7 +16,7 @@
 
 ## Executive Summary
 
-This document defines the transition from v0.4.0 (reliability: preventing false-positive task completion) to v0.5.0 (intent alignment + task organization). The architectural shift moves from a single long session with exit-2 loops to a multi-session phase-driven model where user-visible checkpoints align with session exits (exit 0), and user comments trigger the next session via multica's `on_comment` mechanism.
+This document defines the transition from v2.2.0 (reliability: preventing false-positive task completion) to v2.3.0 (intent alignment + task organization). The architectural shift moves from a single long session with exit-2 loops to a multi-session phase-driven model where user-visible checkpoints align with session exits (exit 0), and user comments trigger the next session via multica's `on_comment` mechanism.
 
 **Core Constraint:** Only modifications to the plugin (hooks/skills/capabilities) are allowed. No changes to multica daemon itself.
 
@@ -24,13 +24,13 @@ This document defines the transition from v0.4.0 (reliability: preventing false-
 
 ## Architecture Evolution
 
-### v0.4.0 Model (Current)
+### v2.2.0 Model (Current)
 - Single long session per issue
 - Agent loops internally via exit 2 until completion signal emitted
 - User waits for session to finish (may hang indefinitely if agent loops)
 - Checkpoint comments generated but have no structural significance
 
-### v0.5.0 Model (Proposed)
+### v2.3.0 Model (Proposed)
 - Multi-session, phase-driven lifecycle
 - User-visible checkpoint = session exit (exit 0)
 - User comment = next session trigger (via `multica on_comment`)
@@ -62,7 +62,7 @@ spec → plan → demo → execute → verify → result → done
 ### **EPIC-01: Multi-Session Phase Architecture** `[READY]`
 *Foundation: Enable session exits at user-visible checkpoints rather than internal loops.*
 
-Rationale: Current v0.4.0 holds long sessions open until completion signal, blocking user feedback loops. v0.5.0 exits cleanly at checkpoints (spec, demo, result), allowing asynchronous user review.
+Rationale: Current v2.2.0 holds long sessions open until completion signal, blocking user feedback loops. v2.3.0 exits cleanly at checkpoints (spec, demo, result), allowing asynchronous user review.
 
 **REQ-01-01: Spec Phase Entry & Exit Protocol**
 - **Description:** Implement spec-generation phase that produces structured specification (requirements, acceptance criteria, constraints) and posts [spec:vN] comment before exit 0.
@@ -749,14 +749,14 @@ EPIC-08, EPIC-09, EPIC-10 are **blocked pending design discussion** and excluded
 
 ## Acceptance Criteria (Release Gate)
 
-Release v0.5.0 only when:
+Release v2.3.0 only when:
 
 1. All P0 requirements (18) have passing acceptance tests
 2. All P1 requirements (17) have passing acceptance tests
 3. Comment trail of 3 real-world example issues validates workflow end-to-end
 4. Documentation (EPIC-10) is reviewed by non-author
-5. Backward compatibility: v0.4.0 loop.json files load without errors
-6. No regressions in existing v0.4.0 smoke tests (tests/smoke/run-claude.sh)
+5. Backward compatibility: v2.2.0 loop.json files load without errors
+6. No regressions in existing v2.2.0 smoke tests (tests/smoke/run-claude.sh)
 
 ---
 
@@ -768,7 +768,7 @@ Release v0.5.0 only when:
 | Implementation start | 2026-06-21 | Task breakdown |
 | Alpha (internal) | 2026-07-31 | All P0 + P1 complete |
 | Beta (closed) | 2026-08-21 | All requirements complete + docs |
-| GA (v0.5.0) | 2026-09-07 | Release tag + CHANGELOG |
+| GA (v2.3.0) | 2026-09-07 | Release tag + CHANGELOG |
 
 ---
 

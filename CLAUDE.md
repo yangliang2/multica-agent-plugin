@@ -18,7 +18,7 @@ Hooks are installed to `~/.claude/hooks/multica/` by the installer and registere
 in `~/.claude/settings.json`. Run the installer to set up:
 
 ```bash
-npx multica-agent-plugin
+npx github:yangliang2/multica-agent-plugin
 ```
 
 The installer registers these hooks:

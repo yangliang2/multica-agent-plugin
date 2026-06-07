@@ -1,3 +1,5 @@
+<!-- Generated: 2026-06-07 | Updated: 2026-06-07 -->
+
 # AGENTS.md — Multica Agent Plugin Contract
 
 ## Identity

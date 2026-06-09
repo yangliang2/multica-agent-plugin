@@ -1,129 +1,148 @@
-# multica-workflow — 5-Phase State Machine
+# multica-workflow — 7-Phase State Machine
 
 This skill governs the full lifecycle of a Multica agent task from assignment to terminal state.
 
 ---
 
-## Phase 1: discover
+## Signal Grammar
 
-**Entry condition:** Issue assigned to agent, or `on_comment` event received while status is `blocked`.
+Agents emit phase signals in issue comments to communicate lifecycle state. Users respond with steering signals.
+Full tables for both directions are in `docs/HUMAN-GUIDE.md §2 Comment Protocol`.
+
+Quick reference — signal emitted at each phase exit and the user signal that resumes it:
+
+| Phase | Agent emits at exit | User signal to resume |
+|-------|--------------------|-----------------------|
+| spec | `[spec:vN]` | `[proceed]` or `[revise: <feedback>]` |
+| plan | `[phase] spec→plan` | (automatic — no user action) |
+| demo | `[demo:vN]` | `[looks-right]` or `[wrong: <feedback>]` |
+| execute | `[checkpoint:N]` every 5 iterations | (automatic — no user action) |
+| verify | `[verification]` | (automatic — no user action) |
+| result | `[result]` | (automatic — terminal) |
+| blocked (HITL) | `[HITL] phase=<phase> question_id=<uuid>` | Plain text reply to the HITL comment |
+
+`[loop-exhausted]` and `[loop-stuck]` are emitted by the persistence loop when iteration limits are hit;
+both require human intervention. `[revise:]` and `[wrong:]` user signals trigger agent regeneration and
+are captured as repo-scoped learnings (confidence=9).
+
+---
+
+## Phase 1: spec
+
+**Entry condition:** Issue newly assigned (iteration=0, no prior phase), or `on_comment` received after exit with `[spec:vN]` comment pending user response.
 
 **Actions:**
-1. Fetch issue details: `<<cli:issue.get>>`
-2. Fetch full comment history: `<<cli:issue.comment.list>>`
-3. Check metadata for prior run context via `<<cli:issue.metadata.set>>`
-4. Read issue metadata for prior agent context: `<<cli:issue.metadata.list>>`
-   Key fields to look for: blocked_reason (prior HITL), pr_url, pipeline_status, waiting_on
-5. Identify task, completed work, and missing pieces
-6. If the task requires code from a repository, check out via `multica repo checkout <url>`
-   After checkout, read repo-level learnings if present:
-   ```
-   {checkout_dir}/.multica/learnings.jsonl
-   ```
-   If the file exists, read entries with `confidence >= 7` and write them to
-   `## Working Memory` in `.multica/notepad.md` so they persist across the session.
-   Format: `[repo-learning] [{key}] (conf:{conf}) {insight}`
+1. Fetch issue: `<<cli:issue.get>>`
+2. Fetch comments: `<<cli:issue.comment.list>>`
+3. Check for `[revise: <feedback>]` signal in comments — if present, incorporate feedback into regenerated spec
+4. Generate structured specification: requirements, acceptance criteria, constraints, out-of-scope
+5. Post comment with `[spec:vN]` prefix (vN = spec_version + 1); increment spec_version in loop.json
+6. Set loop.json phase = "spec"
 
-**Exit condition:** Requirements are understood with no blocking unknowns.
+**Exit:** exit 0 (user-visible checkpoint; user must post `[proceed]` or `[revise:]` to continue)
 
-**Recommended CLI calls:**
-- `<<cli:issue.get>>` — task description
-- `<<cli:issue.comment.list>>` — prior commentary and human replies
-- `<<cli:issue.metadata.set>>` — durable cross-run state (PR URL, deploy URL)
-
-**Transition:** → plan (clear requirements) | → report/blocked (HITL needed immediately)
+**Transition:** On next session — detect `[proceed]` → phase=plan | detect `[revise:]` → regenerate spec (bump vN)
 
 ---
 
 ## Phase 2: plan
 
-**Entry condition:** Requirements clear; all needed information available.
+**Entry condition:** Prior phase was "spec" and user posted `[proceed]` signal.
 
 **Actions:**
-1. Draft a concise implementation plan
-2. Post the plan as a comment: `<<cli:issue.comment.add>>`
-   - Format: `[phase] discover→plan — <brief plan summary>`
-   - **If a prior learning influenced a key decision**, cite it in the plan comment:
-     ```
-     [phase] discover→plan — <brief plan summary>
-     Using prior learning "<key>" (confidence:<N>): <one-line rationale>.
-     Override: reply to this comment if this assumption is incorrect before execution starts.
-     ```
-   - Only cite learnings that materially affect the approach (skip incidental ones).
-3. Set status to `in_progress`: `<<cli:issue.status>>`
+1. Read spec from most recent `[spec:vN]` comment
+2. Decompose into ordered sub-steps; store in loop.json.progress.completed_steps / current_step
+3. Post `[phase] spec→plan` transition marker comment
+4. Set loop.json phase = "plan"; auto-advance (no user wait)
 
-**Exit condition:** Plan is written to an issue comment; status is `in_progress`.
+**Exit:** exit 0, auto-advances to demo on next session (no user checkpoint)
 
-**Recommended CLI calls:**
-- `<<cli:issue.comment.add>>` — post plan for traceability
-- `<<cli:issue.status>>` — signal active execution
-
-**Transition:** → execute
+**Transition:** Auto → phase=demo on next session start
 
 ---
 
-## Phase 3: execute
+## Phase 3: demo
 
-**Entry condition:** Status is `in_progress`; plan exists in issue comments.
+**Entry condition:** Prior phase was "plan".
 
 **Actions:**
-1. Implement each planned step
-2. For steps >60s, post interim progress: `<<cli:issue.comment.add>>`
-3. On unexpected ambiguity or missing credential: proceed to blocked
-4. Track attempt count; do not loop indefinitely
+1. Read plan from loop.json.progress
+2. Build minimal working version (proof-of-concept, UI mock, non-functional test, or simplest passing implementation)
+3. Post comment with `[demo:vN]` prefix showing what was built and key design decisions
+4. Set loop.json phase = "demo"
 
-**Exit condition:** Work product complete; no known defects remain; ready for verification.
+**Exit:** exit 0 (user-visible checkpoint; user must post `[looks-right]` or `[wrong:]` to continue)
 
-**Recommended CLI calls:**
-- `<<cli:issue.comment.add>>` — progress updates for long steps
-- `<<cli:issue.metadata.set>>` — persist durable artifacts (PR URL, deploy URL)
-
-**Transition:** → verify
+**Transition:** On next session — detect `[looks-right]` → phase=execute | detect `[wrong: <feedback>]` → fix demo (bump vN)
 
 ---
 
-## Phase 4: verify
+## Phase 4: execute
 
-**Entry condition:** Implementation complete.
+**Entry condition:** Prior phase was "demo" and user posted `[looks-right]` signal, or resuming mid-execute.
 
 **Actions:**
-1. Run appropriate checks (tests, linters, smoke tests)
-2. On failure: diagnose, fix, re-run (max 3 cycles)
-3. After 3 consecutive failures without progress: → blocked
-4. Post verification outcome: `<<cli:issue.comment.add>>`
+1. Implement all planned sub-steps from loop.json.progress
+2. Update progress.current_step and progress.completed_steps after each step
+3. Commit code to workspace
+4. If more steps remain: exit 2 (internal loop — no user visibility)
+5. Post `[checkpoint:N]` comment only when iteration count >= 5
+6. On ambiguity or missing credential: exit 0 with `[HITL]` comment (phase stays "execute")
 
-**Exit condition:** All checks pass, or 3-strike failure is ready for HITL escalation.
+**Exit:**
+- exit 2 while steps remain (internal persistence loop; increment iteration and exit2_triggers_per_session)
+- exit 0 when all steps complete → phase=verify
+- exit 0 at max_iterations (50) → post `[loop-exhausted]` comment, set phase="result"
 
-**Recommended CLI calls:**
-- `<<cli:issue.comment.add>>` — log verification results
-
-**Transition:** → report (pass) | → blocked (3-strike failure)
+**Transition:** Auto → phase=verify when all steps complete
 
 ---
 
-## Phase 5: report
+## Phase 5: verify
 
-**Entry condition:** Verification passed, or blocked condition confirmed.
+**Entry condition:** Prior phase was "execute" and all steps complete, or resuming mid-verify.
 
-**Actions (success path):**
-1. Write final summary: what was done, artifacts, caveats
-   `<<cli:issue.comment.add>>`
-2. Clear stale metadata: if blocked_reason was set, delete it: `<<cli:issue.metadata.delete>>` --key blocked_reason
-3. Set status to `done`: `<<cli:issue.status>>`
+**Actions:**
+1. Run verification_cmd from loop.json (default: npm test / pytest / cargo test / go test by ecosystem)
+2. Collect evidence: exit_code, command, output_hash (SHA256 first 8 chars)
+3. Detect flaky: same output_hash but differing exit_codes across attempts → tag flaky-suspect, allow retry
+4. Post `[verification]` comment with: exit_code, command, output_hash, category (syntax|import|assertion|timeout|permission)
+5. On failure: attempt fix in same session and re-verify (max 3 attempts)
+6. After 3 failures: post `[verify-failed]` comment, advance to result phase
 
-**Actions (blocked path):**
-1. Write `[HITL]` comment (see `skills/core/hitl-protocol.md`)
-   `<<cli:issue.comment.add>>`
-2. Set status to `blocked`: `<<cli:issue.status>>`
-3. Exit immediately; do not wait for reply
+**Exit:** exit 0 → phase=result
 
-**Exit condition:** Status is `done` or `blocked`. Process terminates.
+**Transition:** Auto → phase=result
 
-**Recommended CLI calls:**
-- `<<cli:issue.comment.add>>` — final summary or HITL question
-- `<<cli:issue.status>>` — terminal status signal
+---
 
-**Transition:** None (terminal). Daemon reawakens via `on_comment` if status is `blocked`.
+## Phase 6: result
+
+**Entry condition:** Verify phase complete (pass or 3-strike fail).
+
+**Actions:**
+1. Extract learnings from `[wrong:]`/`[revise:]` signals in comment history
+2. Synthesize final summary: what was done, evidence, caveats, any failures
+3. Post `[result]` comment with summary
+4. Set issue status done: `<<cli:issue.status>>`
+5. Set loop.json phase = "done"
+
+**Exit:** exit 0 (terminal)
+
+**Transition:** → done (process exits)
+
+---
+
+## Phase 7: done
+
+**Entry condition:** Phase="done" set by result phase.
+
+**Actions:**
+1. Extract learnings to repo-scoped store (handled by stop.sh on exit)
+2. Issue is already status=done
+3. No comment needed
+
+**Exit:** exit 0 (immediate — stop.sh handles cleanup)
 
 ---
 
@@ -133,21 +152,27 @@ This skill governs the full lifecycle of a Multica agent task from assignment to
 [assigned / on_comment]
         │
         ▼
-    discover ──────────────────────────────┐
-        │ requirements clear               │ HITL needed immediately
-        ▼                                  │
-      plan                                 │
-        │                                  │
-        ▼                                  │
-    execute ◄──── fix ◄──── verify (fail, <3) 
-        │                       │
-        │                       │ verify pass
-        ▼                       ▼
-    verify ──────────────► report
-        │ 3-strike fail         │
-        └───────────────────────┘
-                                │
-                         done / blocked
+      spec ──── [revise:] ──► regenerate spec (vN++)
+        │ [proceed]
+        ▼
+      plan (internal, auto-advance)
+        │
+        ▼
+      demo ──── [wrong:] ──► rebuild demo (vN++)
+        │ [looks-right]
+        ▼
+    execute ◄── exit 2 (internal loop, ≤50 iter)
+        │ all steps done
+        ▼
+     verify ◄── fix+retry (max 3)
+        │ pass or 3-strike fail
+        ▼
+     result ──► done (terminal)
+
+     spec/demo/result: exit 0 (user checkpoint)
+     plan/verify: exit 0 (auto-advance)
+     execute: exit 2 loop internally, exit 0 to advance
+     HITL: exit 0 with [HITL] comment → blocked → on_comment resumes
 ```
 
 ---
@@ -172,6 +197,34 @@ this is an autopilot run-only task:
 - Write result directly to stdout — the platform captures it
 - Persistence loop and HITL protocols do not apply
 - Use `multica autopilot get $MULTICA_AUTOPILOT_RUN_ID` for configuration
+
+---
+
+## loop.json Schema
+
+All fields are optional on read; defaults are applied by stop.sh and session-start.sh.
+Old v2.2.0 files that lack v2.3.0 fields remain valid.
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `active` | boolean | `false` | Whether the persistence loop is running |
+| `session_id` | string | `""` | Claude Code session ID for this loop |
+| `issue_id` | string | `""` | Multica issue ID (pattern: `[A-Za-z0-9._-]{1,64}`) |
+| `iteration` | integer | `0` | Current iteration counter (0–1000) |
+| `max_iterations` | integer | `50` | Hard stop after this many iterations (1–1000) |
+| `phase` | string | `""` | Current workflow phase; valid values: `spec`, `plan`, `demo`, `execute`, `verify`, `result`, `done`, `setup`, `execution`, `deslop`, `complete`, `blocked`, `verification`, `report` |
+| `passes` | boolean | `false` | Whether the current iteration passed verification |
+| `last_updated` | string | `""` | ISO 8601 timestamp of last write |
+| `nonce` | string | `""` | DONE-signal nonce for this session |
+| `evidence_file` | string | `""` | Path to verification evidence artifact |
+| `mode` | string | `"execution"` | Loop execution mode (v2.3.0+) |
+| `spec_version` | integer | `0` | Schema version; 0 = v2.2.0 compat, 1 = v2.3.0 (v2.3.0+) |
+| `verification_cmd` | string | `""` | Shell command to run during verify phase (v2.3.0+) |
+| `progress.summary` | string | `""` | Human-readable progress summary (v2.3.0+) |
+| `progress.pct` | integer | `0` | Explicit progress percentage 0–100; overrides story-derived pct in loop-status (v2.3.0+) |
+| `progress.completed_steps` | array | `[]` | List of completed step identifiers (v2.3.0+) |
+| `progress.current_step` | string | `""` | Identifier of the step currently in progress (v2.3.0+) |
+| `exit2_triggers_per_session` | integer | `0` | Count of exit-2 stop-hook triggers in this session; incremented by execute-phase exit-2 (v2.3.0+) |
 
 ---
 

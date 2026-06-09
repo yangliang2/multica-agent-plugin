@@ -241,26 +241,38 @@ if [[ -n "$issue_id" ]]; then
     # H6: replace awk JSON parsing with python3 for correctness on all platforms
     _loop_fields=$(python3 -c "
 import json, sys
+PHASE_OK = {'setup','execution','execute','deslop','complete','blocked','verification','report',
+            'spec','plan','demo','verify','result','done'}
 try:
     d = json.load(open(sys.argv[1]))
     active = str(d.get('active', False)).lower()
     iteration = str(d.get('iteration', 0))
-    phase = str(d.get('phase', ''))
+    raw_phase = d.get('phase', '')
+    phase = raw_phase if raw_phase in PHASE_OK else ''
+    mode = d.get('mode', 'execution')
+    spec_version = str(d.get('spec_version', 0))
+    verification_cmd = d.get('verification_cmd', '')
     next_story = ''
     for s in d.get('stories', []):
         if not s.get('passes', True):
             next_story = s.get('title', '')
             break
-    print(f'{active}|{iteration}|{phase}|{next_story}')
+    print(f'{active}|{iteration}|{phase}|{next_story}|{mode}|{spec_version}|{verification_cmd}')
 except Exception:
-    print('false|||')
-" "$LOOP_JSON" 2>/dev/null || echo "false|||")
+    print('false||||execution|0|')
+" "$LOOP_JSON" 2>/dev/null || echo "false||||execution|0|")
     active="${_loop_fields%%|*}"
     _rest="${_loop_fields#*|}"
     iteration="${_rest%%|*}"
     _rest="${_rest#*|}"
     phase="${_rest%%|*}"
-    next_story="${_rest#*|}"
+    _rest="${_rest#*|}"
+    next_story="${_rest%%|*}"
+    _rest="${_rest#*|}"
+    loop_mode="${_rest%%|*}"
+    _rest="${_rest#*|}"
+    loop_spec_version="${_rest%%|*}"
+    loop_verification_cmd="${_rest#*|}"
 
     if [[ "$active" == "true" ]]; then
       # H4: generate/refresh nonce for DONE signal binding
@@ -273,13 +285,42 @@ except Exception:
         printf '%s' "$_nonce" > "$_nonce_file"
       fi
 
-      loop_hint="Resuming issue ${issue_id}: iteration ${iteration}, phase=${phase}."
+      loop_hint="Resuming issue ${issue_id}: iteration ${iteration}, phase=${phase}, mode=${loop_mode:-execution}, spec_version=${loop_spec_version:-0}."
       if [[ -n "$next_story" ]]; then
         loop_hint="${loop_hint} Next story: ${next_story}"
+      fi
+      if [[ -n "${loop_verification_cmd:-}" ]]; then
+        loop_hint="${loop_hint} Verification cmd: ${loop_verification_cmd}"
       fi
       loop_hint="${loop_hint} Emit <promise>DONE:${_nonce}</promise> when complete."
 
       context_parts+=("## Loop State"$'\n'"$loop_hint")
+
+      # v2.3.0: inject phase-specific action guidance
+      _phase_guidance=""
+      case "$phase" in
+        spec)
+          _phase_guidance="You are resuming the spec phase. Fetch issue comments (<<cli:issue.comment.list>>). If you find [proceed] in comments: set loop.json phase='plan' and advance. If you find [revise: <feedback>]: incorporate feedback, regenerate spec, post new [spec:vN] comment, then emit DONE."
+          ;;
+        plan)
+          _phase_guidance="You are in the plan phase. Read the spec from the most recent [spec:vN] comment. Decompose into ordered sub-steps; store them in loop.json progress fields. Post [phase] spec→plan comment. Set loop.json phase='plan'. Emit DONE to auto-advance to demo."
+          ;;
+        demo)
+          _phase_guidance="You are resuming the demo phase. Fetch issue comments (<<cli:issue.comment.list>>). If you find [looks-right]: set loop.json phase='execute' and advance. If you find [wrong: <feedback>]: rebuild demo with feedback, post new [demo:vN] comment, then emit DONE."
+          ;;
+        execute)
+          # existing loop hint is sufficient for execute phase
+          ;;
+        verify)
+          _phase_guidance="You are in the verify phase. Run the verification_cmd from loop.json (or detect from ecosystem). Post [verification] comment with exit_code, command, output_hash. If verification passes: set loop.json phase='verify' and emit DONE (auto-advances to result). If it fails after 3 attempts: post [verify-failed] and emit DONE."
+          ;;
+        result)
+          _phase_guidance="You are in the result phase. Synthesize a final summary of what was done. Post [result] comment with summary and any caveats. Set issue status done (<<cli:issue.status>>). Emit DONE."
+          ;;
+      esac
+      if [[ -n "$_phase_guidance" ]]; then
+        context_parts+=("## Phase Guidance"$'\n'"$_phase_guidance")
+      fi
     fi
   fi
 fi

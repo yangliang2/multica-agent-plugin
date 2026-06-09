@@ -1,10 +1,10 @@
 # multica-agent-plugin
 
-Claude Code agent plugin for the Multica ecosystem. Provides skills, hooks, tools, and adapters that enable Claude Code agents running inside the Multica daemon to interact with issues, comments, metadata, and the broader Multica platform.
+Claude Code agent plugin for the Multica ecosystem. Provides skills, hooks, tools, and capability descriptors that enable Claude Code agents running inside the Multica daemon to interact with issues, comments, metadata, and the broader Multica platform.
 
 ## What This Is
 
-Multica is an AI-native task management platform (think Linear, but with AI agents as first-class citizens). When an agent is assigned an issue, the Multica daemon spawns a Claude Code session and hands it a task. This plugin extends that session with skills, hooks, tools, adapters, and capability descriptors that wire the agent into Multica workflows — from posting comments and setting status, to coordinating squads, routing to subagents, and persisting cross-session learnings.
+Multica is an AI-native task management platform (think Linear, but with AI agents as first-class citizens). When an agent is assigned an issue, the Multica daemon spawns a Claude Code session and hands it a task. This plugin extends that session with skills, hooks, tools, and capability descriptors that wire the agent into Multica workflows — from posting comments and setting status, to coordinating squads, routing to subagents, and persisting cross-session learnings.
 
 ## Features
 
@@ -40,7 +40,6 @@ multica-agent-plugin/
 ├── tests/smoke/              # Smoke tests
 ├── capabilities/             # Capability descriptors
 │   └── claude-code.json      # Capability matrix incl. model_routing
-├── adapters/                 # Harness-specific integration shims
 ├── VERSION                   # Semver version string
 └── README.md
 ```
@@ -80,12 +79,18 @@ See [docs/QUICKSTART.md](docs/QUICKSTART.md) for full setup instructions.
 
 ## Supported Frameworks
 
+This plugin currently targets **Claude Code only**. The skills, hooks, and CLI
+contract are written against the Claude Code harness (Stop / PreToolUse /
+SessionStart hooks, `<promise>DONE</promise>` signaling, stdin hook payloads).
+
 | Harness | Status |
 |---------|--------|
-| Claude Code | MVP (this repo) |
-| Codex | Roadmap |
-| Gemini CLI | Roadmap |
-| OpenCode | Roadmap |
+| Claude Code | Supported |
+
+Support for other harnesses (Codex, Gemini CLI, OpenCode) is not implemented.
+There are no adapters or integration shims in this repository today. If
+multi-harness support is added later, it will be announced in
+[CHANGELOG.md](CHANGELOG.md).
 
 ## Documentation
 

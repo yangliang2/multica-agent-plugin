@@ -57,7 +57,8 @@ else
   fail "structured evidence should be accepted (exit: $EXIT_CODE)"
 fi
 
-# --- Test 3: structured evidence with summary: only → DONE accepted ---
+# --- Test 3: prose summary: only (no command/exit_code) → DONE rejected ---
+# A bare summary line is self-assessment, not machine-checkable proof.
 cat > "${STATE_DIR}/loop.json" <<EOF
 {"active":true,"iteration":2,"max_iterations":50,"issue_id":"${ISSUE_ID}","phase":"execute","stories":[{"id":"S2","title":"story2","acceptance":"test","passes":true}]}
 EOF
@@ -65,13 +66,65 @@ echo "summary: all checks green" > "${EVIDENCE_DIR}/S2.txt"
 
 result=$(run_hook)
 EXIT_CODE=$(echo "$result" | grep -o "exit:[0-9]*" | cut -d: -f2)
-if [[ "$EXIT_CODE" == "0" ]]; then
-  pass "evidence with summary: field accepted"
+if [[ "$EXIT_CODE" != "0" ]]; then
+  pass "prose summary: only rejected (no command/exit_code proof)"
 else
-  fail "evidence with summary: should be accepted (exit: $EXIT_CODE)"
+  fail "prose summary: only should be rejected (exit: $EXIT_CODE)"
 fi
 
-# --- Test 4: empty evidence → still rejected ---
+# --- Test 4: command + exit_code: 0 → DONE accepted ---
+cat > "${EVIDENCE_DIR}/S2.txt" <<EOF
+command: npm test
+exit_code: 0
+summary: all checks green
+EOF
+
+result=$(run_hook)
+EXIT_CODE=$(echo "$result" | grep -o "exit:[0-9]*" | cut -d: -f2)
+if [[ "$EXIT_CODE" == "0" ]]; then
+  pass "command + exit_code: 0 accepted"
+else
+  fail "command + exit_code: 0 should be accepted (exit: $EXIT_CODE)"
+fi
+
+# --- Test 5: command present but exit_code: non-zero → DONE rejected ---
+# The honesty cross-check: passes=true but evidence shows a failure.
+# (Reset loop.json: Test 4's accepted DONE set active:false.)
+cat > "${STATE_DIR}/loop.json" <<EOF
+{"active":true,"iteration":2,"max_iterations":50,"issue_id":"${ISSUE_ID}","phase":"execute","stories":[{"id":"S2","title":"story2","acceptance":"test","passes":true}]}
+EOF
+cat > "${EVIDENCE_DIR}/S2.txt" <<EOF
+command: npm test
+exit_code: 1
+summary: 2 tests failed
+EOF
+
+result=$(run_hook)
+EXIT_CODE=$(echo "$result" | grep -o "exit:[0-9]*" | cut -d: -f2)
+if [[ "$EXIT_CODE" != "0" ]]; then
+  pass "non-zero exit_code rejected even when passes=true (honesty cross-check)"
+else
+  fail "non-zero exit_code should be rejected (exit: $EXIT_CODE)"
+fi
+
+# --- Test 6: command present but no exit_code line → DONE rejected ---
+cat > "${STATE_DIR}/loop.json" <<EOF
+{"active":true,"iteration":2,"max_iterations":50,"issue_id":"${ISSUE_ID}","phase":"execute","stories":[{"id":"S2","title":"story2","acceptance":"test","passes":true}]}
+EOF
+cat > "${EVIDENCE_DIR}/S2.txt" <<EOF
+command: npm test
+summary: looked fine to me
+EOF
+
+result=$(run_hook)
+EXIT_CODE=$(echo "$result" | grep -o "exit:[0-9]*" | cut -d: -f2)
+if [[ "$EXIT_CODE" != "0" ]]; then
+  pass "command without exit_code rejected"
+else
+  fail "command without exit_code should be rejected (exit: $EXIT_CODE)"
+fi
+
+# --- Test 7: empty evidence → still rejected ---
 cat > "${STATE_DIR}/loop.json" <<EOF
 {"active":true,"iteration":3,"max_iterations":50,"issue_id":"${ISSUE_ID}","phase":"execute","stories":[{"id":"S3","title":"story3","acceptance":"test","passes":true}]}
 EOF

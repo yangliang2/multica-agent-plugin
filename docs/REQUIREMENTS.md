@@ -1,6 +1,6 @@
 # Multica Agent Plugin — v2.3.0 Structured Requirements
 
-**Status:** Design Phase | **Version:** v2.3.0 | **Date:** 2026-06-07
+**Status:** Design Phase | **Version:** v2.3.0 | **Date:** 2026-06-09
 
 ---
 
@@ -46,7 +46,7 @@ spec → plan → demo → execute → verify → result → done
 ```
 
 | Phase | Agent Activity | User Signal | Next |
-|-------|---|---|---|
+|-------|----------------|-------------|------|
 | **spec** | Generate structured specification with PRD-like detail; post [spec:vN] comment | User reviews spec; posts [proceed] or [revise:...] comment | plan |
 | **plan** | Decompose into sub-steps (internal only, no spec bump needed); post no comment | Auto-transition; no user wait required | demo |
 | **demo** | Build minimal visible version (MVP, non-functional test, UI prototype); post [demo:vN] comment | User reviews demo; posts [looks-right] or [wrong:...] comment | execute |
@@ -126,8 +126,9 @@ Rationale: Current v2.2.0 holds long sessions open until completion signal, bloc
 - **Acceptance Criteria:**
   - Verification command run in same turn (not deferred)
   - [verification] comment includes exit_code, command, output_hash
-  - Failure gates progression to result phase (must fix in execute)
-  - Max 3 verify attempts; after 3 failures → auto-transition to result with [verify-failed] tag
+  - Failure gates progression to result phase for attempts 1 and 2 (must fix in execute)
+  - Max 3 verify attempts; after 3 consecutive failures → escape-hatch: auto-transition to result with [verify-failed] tag (gate overridden only after exhaustion, not on first failure)
+  - [verify-failed] result is treated as incomplete; user must post [retry] or [abort] to resolve
 
 **REQ-01-06: Result Phase & Final User Confirmation**
 - **Description:** Synthesize learnings and results; post [result] comment; wait for user approval before done.
@@ -138,7 +139,7 @@ Rationale: Current v2.2.0 holds long sessions open until completion signal, bloc
 - **Dependencies:** REQ-01-05
 - **Acceptance Criteria:**
   - Result phase posts summary comment with [result] tag
-  - Issue status set to `done` only after user posts confirmation or auto-close on timeout
+  - Issue status set to `done` only after user posts confirmation, or auto-close after 72 hours if no user response; agent posts a [result-timeout] comment before closing
   - Learnings extracted and stored (see EPIC-05)
   - Process exits cleanly without holding session open
 
@@ -206,7 +207,7 @@ Rationale: Current v2.2.0 holds long sessions open until completion signal, bloc
   - New fields: `mode` (execution | planning), `spec_version`, `verification_cmd`, `progress.summary`, `progress.pct`
   - Backward compatible: old loop.json files load without errors
   - All fields documented in schema section of multica-workflow.md
-  - loop.json validation on read checks required fields; fail-closed on corruption
+  - loop.json validation on read checks required fields; fail-closed on corruption: exit 1, rename corrupted file to `loop.json.corrupt` (preserve for debugging), post `[loop-stuck]` comment with path to corrupted file; do not silently discard
 
 **REQ-03-02: Phase Enumeration in Loop**
 - **Description:** Track current and previous phase for resumption logic.
@@ -218,7 +219,7 @@ Rationale: Current v2.2.0 holds long sessions open until completion signal, bloc
 - **Acceptance Criteria:**
   - loop.json.phase field set to current phase (spec | plan | demo | execute | verify | result | done)
   - Session start reads phase and injects appropriate context
-  - Phase transitions are atomic: set new phase, post comment, exit
+  - Phase transitions use write-then-verify: write new phase to `loop.json.tmp` → post phase comment → only then rename `loop.json.tmp` → `loop.json`; if comment post fails, do not rename (retain prior phase); retry comment up to 3 times before aborting with `[loop-stuck]`
 
 **REQ-03-03: Iteration Count & Exit-2 Loop Tracking**
 - **Description:** Track iteration count and exit-2 occurrences within execute phase.
@@ -231,7 +232,10 @@ Rationale: Current v2.2.0 holds long sessions open until completion signal, bloc
 - **Acceptance Criteria:**
   - loop.json.iteration incremented on each exit-2 from execute phase
   - loop.json.max_iterations = 50 (hard cap; after 50 → set blocked + [loop-exhausted])
-  - loop.json.exit2_triggers_per_session tracked for diagnostics
+  - Secondary cap: 4 hours wall-clock elapsed (measured from `loop.json.start_time` against multica issue metadata timestamps, not local system clock) also triggers `[loop-exhausted]`
+  - loop.json.exit2_triggers_per_session tracked for diagnostics (session-level counter; loop.json.iteration is lifetime counter)
+  - Iteration counter resets to 0 on explicit human re-queue (operator must post `[retry]` comment; stop.sh detects and resets on next session start)
+  - `[loop-exhausted]` comment documents last attempted iteration, failure reason, and human recovery instructions (post `[retry]` to reset and re-enqueue)
 
 ---
 
@@ -289,7 +293,8 @@ Rationale: Current v2.2.0 holds long sessions open until completion signal, bloc
 - **Acceptance Criteria:**
   - Leader session end triggers `<<cli:squad.activity>>`
   - Activity call returns member status: in_progress, blocked, done
-  - If any member stuck > 2 hours → post [checkpoint] with stuck member names
+  - "Stuck" definition: member issue has no new exit-0 comment since last activity check; elapsed time sourced from issue comment timestamps (multica server time), not local system clock — avoids clock-skew false positives in multi-machine deployments
+  - If any member stuck > 2 hours → post `[checkpoint]` with stuck member names; threshold configurable via `loop.json.squad_stuck_threshold_minutes` (default: 120)
   - If all children done → auto-transition to result phase
 
 ---
@@ -308,10 +313,10 @@ Rationale: Current v2.2.0 holds long sessions open until completion signal, bloc
 - **Dependencies:** REQ-02-02, EPIC-05 foundation
 - **Acceptance Criteria:**
   - On session exit, stop.sh scans issue comments for [wrong:...] or [revise:...]
-  - Extract 5-10 most recent signals (last 7 days)
-  - Each signal → learning entry with confidence=9, scope=repo
-  - Entries written atomically to .multica/learnings.jsonl
-  - Dedup on key (same mistake not learned twice)
+  - Extract 5-10 most recent signals from the last 7 days; cutoff = UTC session-start timestamp recorded in `loop.json.start_time` minus 7×86400 seconds
+  - Each signal → learning entry with confidence=9, scope=repo, `recorded_at`=UTC ISO-8601 timestamp (required field)
+  - Atomic write: append entries to `.multica/learnings.jsonl.tmp`, then `flock`-protected rename to `.multica/learnings.jsonl`; prevents line interleaving if two squad members exit simultaneously
+  - Dedup key = first 16 hex chars of `sha256(insight[:200])`; duplicate keys → keep highest-confidence entry (latest timestamp wins on tie)
 
 **REQ-05-02: Session-Start Injection of Repo Learnings**
 - **Description:** At session start, inject high-confidence learnings from repo-scoped store into context.
@@ -334,6 +339,7 @@ Rationale: Current v2.2.0 holds long sessions open until completion signal, bloc
   - `tools/curate-memory.sh` (SCOPE_PY2 implementation)
 - **Dependencies:** None (bug fix)
 - **Acceptance Criteria:**
+  - SCOPE_PY2 refers to the second `python3` subprocess in `hooks/stop.sh` responsible for workspace-scoped learning writes (locate the `python3` call following the `scope=workspace` branch in stop.sh)
   - Workspace learnings (scope=workspace) are persisted to workspace context field
   - stop.sh does not silent-fail on workspace-scoped learning writes
   - Cross-machine workspace agents inherit corrected learnings from workspace context
@@ -348,9 +354,12 @@ Rationale: Current v2.2.0 holds long sessions open until completion signal, bloc
 - **Dependencies:** REQ-05-01
 - **Acceptance Criteria:**
   - curate-memory runs on every session end if .multica/learnings.jsonl exists
-  - Duplicate keys → keep highest confidence entry
-  - Confidence decay: -1 per week (floor at 1)
-  - Entries with confidence < 4 after decay are removed
+  - Decay computed from `recorded_at` field (required ISO-8601 field on every entry)
+  - Duplicate keys → keep highest-confidence entry
+  - Confidence decay: -1 per week since `recorded_at`; floor at 1 (entries never auto-removed by time alone)
+  - Entries removed only when confidence < 4 AND no matching correction signal (same key) seen in the last 30 days
+  - Recurrence reinforcement: if a `[wrong:]` or `[revise:]` signal matches an existing key, reset confidence to 9 and update `recorded_at`
+  - Pruned entries logged to `.multica/curate-memory.log` as `[learning-pruned key=X confidence=Y]` before deletion (no silent removal)
 
 ---
 
@@ -370,6 +379,7 @@ Rationale: Current v2.2.0 holds long sessions open until completion signal, bloc
   - Agent detects question_id in user reply and updates loop.json.open_hitls with answered status
   - User response need not match exact A/B options; agent handles free-form text by re-raising HITL if unclear
   - HITL may escalate: member → leader (tier 1) → human (tier 2, after 3 bounces)
+  - If human does not respond within 48 hours of a `[HITL:human]` post: set issue status to `blocked` with `[loop-stuck]` tag and post a timeout notice; prevents indefinite silent stalls
 
 **REQ-06-02: Replay HITL Detection on Session Resume**
 - **Description:** On session start, detect user's reply to open HITL questions without re-raising.
@@ -776,3 +786,4 @@ Release v2.3.0 only when:
 
 - **2026-06-07** — Initial requirements document created from design discussion
 - **2026-06-07** — Added discussion status tags (`[READY]`, `[NEEDS-DISCUSSION]`, `[CORRECTION-NEEDED]`); EPIC-08/09/10 blocked pending discussion; REQ-06-03 acceptance criteria corrected (exit 0 handoff, not blocked)
+- **2026-06-09** — Review remediation: clarified verify-phase escape-hatch ordering (REQ-01-05); added 72h result-phase timeout (REQ-01-06); specified fail-closed corruption handling (REQ-03-01); replaced "atomic" with write-then-verify rename pattern (REQ-03-02); added time cap, re-queue reset, and recovery instructions for iteration cap (REQ-03-03); specified stuck-detection clock source and configurable threshold (REQ-04-04); defined dedup key, atomic write, and 7-day cutoff anchor (REQ-05-01); added SCOPE_PY2 cross-reference (REQ-05-03); hardened decay with recurrence reinforcement and no-silent-removal (REQ-05-04); added 48h HITL human-timeout escape hatch (REQ-06-01); fixed phase table separators; updated document date

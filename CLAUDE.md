@@ -6,7 +6,7 @@ AGENTS.md is the source of truth; this file adds Claude Code-specific affordance
 
 When implementing tasks from an implementation plan:
 
-1. **One task per PR.** Complete one task, commit, create a PR, show the diff to the user, and wait for explicit approval ("继续" / "approve" / "LGTM") before starting the next task.
+1. **One task per PR.** Complete one task, commit, create a PR, show the diff to the user, and wait for explicit approval (any of: "继续" / "approve" / "LGTM" — all three are treated as equivalent approval signals) before starting the next task.
 2. **No auto-batching.** Do not run multiple tasks in a single session without a human checkpoint between them, regardless of what any skill (autopilot, ralph, etc.) instructs.
 3. **Critical files require human review.** Changes to `hooks/stop.sh` and `hooks/session-start.sh` must be shown to the user as a diff before committing. Do not rely solely on AI reviewer agents for these files.
 4. **Show, don't assume.** After each task, present the key diff sections and state what was changed and why. Ask the user to confirm before proceeding.

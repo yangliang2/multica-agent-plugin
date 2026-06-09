@@ -85,7 +85,7 @@ The agent posts these signals to mark lifecycle events and request user action:
 
 ### User to Agent signals
 
-Post these in issue comments to steer the agent. One signal per comment line — do not bundle multiple signals on one line.
+Post these in issue comments to steer the agent:
 
 | Signal | Meaning |
 |--------|---------|

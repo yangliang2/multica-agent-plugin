@@ -189,12 +189,13 @@ Rules:
 
   // 4. Apply patches
   let applied = 0;
-  const failures = [];
+  const skipped = [];   // path not in allowlist — expected, not an error
+  const failures = [];  // patch attempted but failed — revert and exit 1
   const modifiedFiles = [];
   const originalContents = new Map();
   for (const p of (fix.patches || [])) {
     const resolved = resolveAllowedRepoPath(p.file);
-    if (!resolved) { failures.push(`${p.file || '<missing>'}: path not allowed`); continue; }
+    if (!resolved) { skipped.push(`${p.file || '<missing>'}: path not in allowlist (docs/markdown — skip)`); continue; }
     const content = readFile(resolved.abs);
     if (!content) { failures.push(`${resolved.rel}: not found`); continue; }
     if (!content.includes(p.old)) { failures.push(`${resolved.rel}: old string not found`); continue; }
@@ -203,6 +204,10 @@ Rules:
     console.log(`  PATCHED ${resolved.rel}`);
     applied++;
     if (!modifiedFiles.includes(resolved.rel)) modifiedFiles.push(resolved.rel);
+  }
+
+  if (skipped.length > 0) {
+    console.log(`Skipped ${skipped.length} patch(es) for files outside allowlist:\n  ${skipped.join('\n  ')}`);
   }
 
   if (failures.length > 0) {

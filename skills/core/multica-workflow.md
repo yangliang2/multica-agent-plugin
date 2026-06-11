@@ -225,6 +225,8 @@ Old v2.2.0 files that lack v2.3.0 fields remain valid.
 | `progress.completed_steps` | array | `[]` | List of completed step identifiers (v2.3.0+) |
 | `progress.current_step` | string | `""` | Identifier of the step currently in progress (v2.3.0+) |
 | `exit2_triggers_per_session` | integer | `0` | Count of exit-2 stop-hook triggers in this session; incremented by execute-phase exit-2 (v2.3.0+) |
+| `open_hitls` | array | `[]` | Open HITL questions: `{question_id, asked_at, tier}`. session-start matches human replies against each `question_id` on resume (v2.3.0+) |
+| `resolved_hitls` | array | `[]` | Answered HITL questions: open entry + `{answer, answered_at}`. Never re-post a question that appears here (v2.3.0+) |
 
 ---
 

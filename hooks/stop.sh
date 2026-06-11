@@ -156,6 +156,11 @@ try:
     e2t = d.get('exit2_triggers_per_session', 0)
     if not isinstance(e2t, (int, float)) or int(e2t) < 0:
         print('bad_exit2_triggers'); sys.exit(0)
+    # v2.3.0 HITL tracking (REQ-06-01/02): arrays of dicts if present
+    for hf in ('open_hitls', 'resolved_hitls'):
+        hv = d.get(hf, [])
+        if not isinstance(hv, list) or any(not isinstance(x, dict) for x in hv):
+            print(f'bad_{hf}'); sys.exit(0)
     print('ok')
 except Exception as e:
     print(f'parse_error')

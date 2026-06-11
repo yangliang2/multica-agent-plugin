@@ -135,7 +135,11 @@ writes a `[HITL] question_id=<uuid>` comment, sets status `blocked`, and exits. 
 daemon reawakens it on the next `on_comment` event.
 
 **You will see:** A `[HITL]` comment with a clear question and options. Reply directly
-to that comment with your answer — no special format required.
+to that comment with your answer — no special format required. Free-form answers are
+fine: on the next session the agent automatically matches your reply to the question
+(by thread or by `question_id`) and proceeds without re-asking. If no human reply
+arrives within 48 hours, the agent posts a `[loop-stuck]` timeout notice and the
+issue stays `blocked` until you respond.
 
 ### Squad Coordination
 

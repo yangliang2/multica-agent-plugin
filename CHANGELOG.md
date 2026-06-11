@@ -2,6 +2,36 @@
 
 ## [2.3.0] - 2026-06-01
 
+### Added (T07 — HITL replay, REQ-06-01/02)
+
+- **HITL state tracking** (`loop.json`): new `open_hitls` / `resolved_hitls`
+  arrays. Every posted `[HITL]` question is recorded with `question_id`,
+  `asked_at`, `tier`; answered entries move to `resolved_hitls` with `answer`
+  and `answered_at`. Schema-validated in `hooks/stop.sh` (lists of objects),
+  backward compatible — absent fields default to `[]`.
+
+- **Replay detection on resume** (`hooks/session-start.sh`): when `open_hitls`
+  is non-empty, the hook fetches recent comments, matches each `question_id` to
+  a human reply (thread reply to the agent's `[HITL]` comment, or direct
+  `question_id=` mention), injects the answers as "HITL Replies Detected"
+  context, and moves entries open → resolved. The agent never re-posts an
+  answered question; free-form replies are accepted (REQ-06-01).
+
+- **48h hard timeout** (`hooks/session-start.sh`): an `[HITL]` question
+  unanswered past `MULTICA_HITL_HUMAN_TIMEOUT_HOURS` (default 48) now injects a
+  hard-timeout signal directing the agent to post a `[loop-stuck]` notice and
+  stay `blocked` — takes precedence over the 24h conservative-option
+  auto-degradation, and guarantees stalls leave a visible timeline trace.
+
+- **Docs**: `skills/core/hitl-protocol.md` gains "HITL State Tracking
+  (loop.json)" and the 48h hard-timeout rule; `skills/core/multica-workflow.md`
+  schema table extended; `docs/HUMAN-GUIDE.md` explains free-form replies and
+  the 48h behavior to reviewers.
+
+- **Tests**: `tests/smoke/test-session-start-hitl-replay.sh` (6 cases: thread
+  match, direct-mention match, unanswered stays open, resolved carries answers,
+  idempotent re-run, valid JSON output).
+
 ### Added (T06 — learning pipeline, REQ-05-01/02/04)
 
 - **Correction-signal capture** (`hooks/stop.sh`): on clean session exits the hook

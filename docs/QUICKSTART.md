@@ -72,6 +72,54 @@ multica issue comment list ISS-42
 Within the first agent turn you will see `[phase] discover` then `[phase] plan`.
 When the task completes you will see `[loop-complete]`.
 
+## Example: Full 7-Phase Workflow
+
+A realistic end-to-end trail (issue: *"Add login endpoint to auth module"*),
+traceable in under 10 minutes. Lines marked `you:` are comments you post.
+
+```text
+        multica issue create --title "Add login endpoint to auth module" \
+          --body 'POST /login with session cookie. [verification] command="npm test"'
+
+agent:  [spec:v1]
+        Requirements: POST /login accepting {email, password} ...
+        Acceptance: 401 on bad credentials; sets httpOnly session cookie ...
+you:    [revise: passwords are out of scope — we use OAuth2 only]
+        ── session exits after each checkpoint; your reply triggers the next one
+
+agent:  [spec:v2]
+        Requirements: POST /login initiating OAuth2 authorization-code flow ...
+you:    [proceed]
+
+agent:  [phase] spec→plan          ← plan is internal; no review needed
+agent:  [demo:v1]
+        Demo: route stub + redirect to provider (non-functional, no token exchange)
+you:    [looks-right]
+
+agent:  [phase] demo→execute       ← implementation; internal iteration
+agent:  [checkpoint:5] Loop active at iteration 5, phase=execute. Continuing.
+
+agent:  [verification] exit_code=0 command="npm test" output_hash=3f9a1c2e
+        14 passing (auth: 6 new)
+agent:  [phase] verify→result
+agent:  [result]
+        Implemented POST /login (OAuth2 code flow), callback handler, session
+        cookie issuance. Evidence above. Caveat: refresh tokens not in scope.
+you:    (confirm)                  → issue status: done
+```
+
+Two things happened invisibly:
+
+1. Your `[revise: passwords are out of scope ...]` was captured automatically as
+   a repo-scoped learning (confidence 9). The next task on this repo starts with
+   "Previous corrections on this repo: passwords are out of scope — OAuth2 only".
+2. The `[verification] command="npm test"` line in the issue body was stored as
+   `loop.json.verification_cmd` and used for every verify attempt.
+
+The full signal grammar lives in
+[HUMAN-GUIDE.md §2 Comment Protocol](HUMAN-GUIDE.md#2-comment-protocol); the
+reviewer quick-table in §4.
+
 ## Something Went Wrong?
 
 See [HUMAN-GUIDE.md — Troubleshooting](HUMAN-GUIDE.md#troubleshooting).

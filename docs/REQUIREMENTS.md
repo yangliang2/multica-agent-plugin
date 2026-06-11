@@ -459,9 +459,15 @@ Rationale: Current v2.2.0 holds long sessions open until completion signal, bloc
 
 ---
 
-### **EPIC-08: Destructive Guard & Safe-Exec Proxy Hardening** `[NEEDS-DISCUSSION]`
+### **EPIC-08: Destructive Guard & Safe-Exec Proxy Hardening** `[READY]`
 
-> **Blocked:** Requirements extrapolated without design discussion. Do not implement until discussed and approved.
+> **Discussed 2026-06-11.** Decisions: (1) allowlist rescues non-critical deny
+> matches only; patterns in `safe-exec.critical.list` (reverse shells,
+> `rm -rf /`, `curl|bash`, disk overwrite, encoded payloads) can never be
+> rescued. (2) Bypass detection targets obfuscation of deny patterns
+> (whitespace normalization, deny match + `$()`/backtick/heredoc/`eval`
+> construct → `[BYPASS_ATTEMPT]`); blanket rejection of all `$(...)`/heredocs
+> was rejected as it would break legitimate agent commands.
 
 *Prevent accidental destructive commands; provide audit trail for safe-exec decisions.*
 

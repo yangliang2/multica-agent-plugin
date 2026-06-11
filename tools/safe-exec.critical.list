@@ -1,0 +1,50 @@
+# safe-exec.critical.list — high-severity deny patterns that the allowlist can
+# NEVER override (REQ-08-01, decision 2026-06-11).
+#
+# Each non-comment line must be a byte-for-byte copy of a pattern line in
+# safe-exec.deny.list. pre-tool.sh matches the deny pattern first; if the
+# matched pattern also appears here, the allowlist is not consulted.
+#
+# Older installed hooks ignore this file entirely and block every deny match —
+# strictly safer, so version skew fails safe.
+
+# Filesystem wipe
+rm\s+-[a-z]*r[a-z]*f\s+/
+rm\s+-[a-z]*r[a-z]*f\s+~
+rm\s+-[a-z]*r[a-z]*f\s+\$HOME
+
+# Overwrite disk
+dd\s+if=
+mkfs\.
+
+# Kill all processes
+kill\s+-9\s+-1
+
+# Truncate system files
+>\s*/etc/
+truncate\s+-s\s+0\s+/etc/
+
+# Shell injection via pipes to shell interpreters
+\|\s*(bash|sh|zsh|dash|ksh)\b
+\|\s*sudo\s+(bash|sh)
+curl\s+.*\|\s*(bash|sh|zsh)
+wget\s+.*-O\s*-\s*\|\s*(bash|sh)
+
+# Encoded payload execution
+base64\s+(-d|--decode).*\|\s*(bash|sh|python|perl|ruby|node)
+echo\s+.*\|\s*base64\s+(-d|--decode)\s*\|\s*(bash|sh)
+xxd\s+-r.*\|\s*(bash|sh|zsh)
+eval\s+.*(base64|xxd\s+-r)
+printf\s+.*\\\\x.*\|\s*(bash|sh)
+
+# Reverse shells
+bash\s+-i\s+.*>&\s*/dev/tcp/
+/dev/tcp/
+/dev/udp/
+nc\s+.*-e\s+.*(bash|sh)
+ncat\s+.*--exec
+socat\s+.*exec:
+
+# Python/Perl one-liner remote execution
+python[23]?\s+-c\s+["'].*__(import|exec|eval)
+perl\s+-e\s+["'].*system\s*\(

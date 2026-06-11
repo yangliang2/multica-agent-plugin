@@ -1,8 +1,11 @@
 # Changelog
 
-## [2.3.0] - 2026-06-01
+## [2.3.0] - Unreleased
 
-### Added (T10 — squad coordination, REQ-04-03/04)
+> In development. Section headings carry the date each batch landed; the
+> version date is set at release (GA target: 2026-09-07).
+
+### Added (T10 — squad coordination, REQ-04-03/04) — 2026-06-11
 
 - **Member metadata protocol** (`skills/core/squad-member-workflow.md`): members
   read parent context via `parent_id` metadata (no shared-file polling — agents
@@ -32,7 +35,7 @@
   detection, hourly rate limit, all-done transition, phase comment, no-children
   no-op).
 
-### Added (T09 — planning mode, REQ-04-01/02)
+### Added (T09 — planning mode, REQ-04-01/02) — 2026-06-11
 
 - **Planning mode detection** (`hooks/session-start.sh`): epic keywords
   (`epic` | `initiative` | `roadmap`) in the issue title set
@@ -59,7 +62,7 @@
   detection, breakdown reference, plain-title default, immutability,
   single-fetch guarantee, valid JSON).
 
-### Added (T08 — verification runner, REQ-07-01/02/03)
+### Added (T08 — verification runner, REQ-07-01/02/03) — 2026-06-11
 
 - **`tools/run-verification.sh`**: program-enforced verification runner. Resolves
   the command (argument > `loop.json.verification_cmd` > ecosystem default:
@@ -84,7 +87,7 @@
 - **Tests**: `tests/smoke/test-run-verification.sh` (5 cases) and
   `test-session-start-verification-discovery.sh` (4 cases).
 
-### Added (T07 — HITL replay, REQ-06-01/02)
+### Added (T07 — HITL replay, REQ-06-01/02) — 2026-06-11
 
 - **HITL state tracking** (`loop.json`): new `open_hitls` / `resolved_hitls`
   arrays. Every posted `[HITL]` question is recorded with `question_id`,
@@ -114,7 +117,7 @@
   match, direct-mention match, unanswered stays open, resolved carries answers,
   idempotent re-run, valid JSON output).
 
-### Added (T06 — learning pipeline, REQ-05-01/02/04)
+### Added (T06 — learning pipeline, REQ-05-01/02/04) — 2026-06-11
 
 - **Correction-signal capture** (`hooks/stop.sh`): on clean session exits the hook
   scans recent issue comments (7-day window anchored to `loop.json.start_time`)
@@ -129,7 +132,7 @@
   now surface in a dedicated "Previous corrections on this repo:" context section
   including touched file paths for relevance filtering.
 
-### Changed (T06)
+### Changed (T06) — 2026-06-11
 
 - **Decay aligned to spec** (`tools/curate-memory.sh`): confidence decays −1 per
   week since `recorded_at` (floor 1), replacing the previous −2 (>90d) / −4 (>180d)
@@ -143,7 +146,7 @@
   entry in place instead of appending it to the same file and then losing it in
   the issue-level rewrite.
 
-### Tests (T06)
+### Tests (T06) — 2026-06-11
 
 - `tests/smoke/test-stop-correction-capture.sh` (6 cases), `test-curate-decay.sh`
   (6 cases), `test-session-start-corrections.sh` (4 cases). `run-all.sh` now also
@@ -151,7 +154,7 @@
   `run-claude.sh` updated to relative timestamps (hardcoded ancient dates now
   trigger the spec-aligned prune, which is decay behavior, not dedup behavior).
 
-### Changed (honesty — review H2/H3)
+### Changed (honesty — review H2/H3) — 2026-06-01
 
 - **H2 — Removed vaporware "adapters" claims** (`README.md`): the repository has
   no `adapters/` directory and no harness-specific integration shims. Removed the
@@ -174,7 +177,7 @@
   not semantic — it cannot verify the recorded command is relevant or that the
   exit code was transcribed faithfully.
 
-### Added
+### Added (honesty pass) — 2026-06-01
 
 - **`tests/smoke/test-stop-evidence-structure.sh`**: expanded from 4 to 7 cases —
   prose-`summary:`-only is now rejected, `command:` + `exit_code: 0` is accepted,

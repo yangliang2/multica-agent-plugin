@@ -283,6 +283,126 @@ squad_leader_audit() {
   fi
 }
 
+# REQ-05-01: capture user correction signals ([wrong: ...] / [revise: ...]) from
+# recent issue comments as high-confidence repo-scoped learnings, without the
+# agent generating them. Dedup key = first 16 hex chars of sha256(insight[:200]).
+# A re-seen key is reinforced: confidence reset to 9, recorded_at refreshed
+# (REQ-05-04 recurrence reinforcement).
+capture_correction_learnings() {
+  command -v multica >/dev/null 2>&1 || return 0
+  command -v python3 >/dev/null 2>&1 || return 0
+  local _cl_file="${MULTICA_WORKDIR}/.multica/learnings.jsonl"
+  local _cl_comments_tmp
+  _cl_comments_tmp=$(mktemp)
+  if ! multica issue comment list "$issue_id" --recent 20 --output json \
+      > "$_cl_comments_tmp" 2>/dev/null; then
+    rm -f "$_cl_comments_tmp"
+    return 0
+  fi
+  local _cl_repo
+  _cl_repo=$(git -C "$MULTICA_WORKDIR" remote get-url origin 2>/dev/null || true)
+  mkdir -p "$(dirname "$_cl_file")"
+  python3 - "$_cl_comments_tmp" "$_cl_file" "$LOOP_JSON" "$_cl_repo" "$issue_id" <<'CAPTURE_PY' \
+    || log_error "correction-signal capture failed (non-blocking)"
+import json, sys, os, re, hashlib, fcntl
+from datetime import datetime, timedelta, timezone
+
+comments_file, learnings_file, loop_json, repo_url, issue_id = sys.argv[1:6]
+
+SIGNAL_RE = re.compile(r'^\[(wrong|revise):\s*(.*)\]\s*$')
+
+def parse_ts(s):
+    try:
+        return datetime.fromisoformat(s.replace('Z', '+00:00'))
+    except Exception:
+        return None
+
+# 7-day window anchored to loop.json.start_time (REQ-05-01); fallback: now.
+anchor = None
+try:
+    anchor = parse_ts(json.load(open(loop_json)).get('start_time', ''))
+except Exception:
+    pass
+if anchor is None:
+    anchor = datetime.now(timezone.utc)
+window_start = anchor - timedelta(days=7)
+
+try:
+    raw = json.load(open(comments_file))
+except Exception:
+    sys.exit(0)
+if isinstance(raw, dict):
+    raw = raw.get('comments') or raw.get('threads') or raw.get('items') or []
+if not isinstance(raw, list):
+    sys.exit(0)
+
+signals = []
+for c in raw:
+    if not isinstance(c, dict):
+        continue
+    author = c.get('author') or {}
+    if author.get('type') == 'agent':
+        continue  # only human-authored corrections become learnings
+    ts = parse_ts(c.get('created_at', '') or '')
+    if ts is None or ts < window_start:
+        continue
+    for line in str(c.get('content', '')).splitlines():
+        m = SIGNAL_RE.match(line.strip())
+        if m:
+            insight = ' '.join(m.group(2).split())[:500]
+            if insight:
+                signals.append((ts, m.group(1), insight))
+
+if not signals:
+    sys.exit(0)
+signals.sort(key=lambda s: s[0])
+signals = signals[-10:]
+
+now_iso = datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
+lock_path = learnings_file + '.lock'
+with open(lock_path, 'w') as lk:
+    fcntl.flock(lk, fcntl.LOCK_EX)
+    entries = []
+    if os.path.exists(learnings_file):
+        with open(learnings_file) as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    entries.append(json.loads(line))
+                except Exception:
+                    continue
+    by_key = {e.get('key'): e for e in entries if e.get('key')}
+    changed = False
+    for ts, sig_type, insight in signals:
+        key = hashlib.sha256(insight[:200].encode('utf-8')).hexdigest()[:16]
+        if key in by_key:
+            e = by_key[key]
+            e['confidence'] = 9
+            e['recorded_at'] = now_iso
+            e['ts'] = now_iso
+        else:
+            e = {
+                'ts': now_iso, 'recorded_at': now_iso,
+                'scope': 'repo' if repo_url else 'issue', 'repo': repo_url,
+                'skill': 'correction-capture', 'type': 'fix',
+                'key': key, 'insight': insight, 'confidence': 9,
+                'source': issue_id, 'branch': '', 'commit': '', 'files': [],
+            }
+            entries.append(e)
+            by_key[key] = e
+        changed = True
+    if changed:
+        tmp = learnings_file + '.tmp'
+        with open(tmp, 'w') as f:
+            for e in entries:
+                f.write(json.dumps(e) + '\n')
+        os.replace(tmp, learnings_file)
+CAPTURE_PY
+  rm -f "$_cl_comments_tmp"
+}
+
 # v2.3.0 phase dispatch: checkpoint phases (spec, demo) and auto-advance phases (plan, verify)
 # skip the stories/evidence gate and go directly to learning routing + exit 0
 _v050_phase_exit=false
@@ -422,6 +542,10 @@ except Exception as e:
 fi
 
 if [[ "$done_signal" == "true" ]] || [[ "${_v050_phase_exit:-false}" == "true" ]]; then
+  # REQ-05-01: harvest user correction signals first so newly captured learnings
+  # are dispatched by the routing pass below in this same session exit
+  capture_correction_learnings || true
+
   # ---------------------------------------------------------------------------
   # Learnings routing: dispatch by scope to correct storage path
   # L1 (workspace) → multica workspace context field
@@ -518,6 +642,13 @@ for repo_url, entries in repo_entries.items():
             continue
     if not target_dir:
         # No matching checkout found — keep in issue-level file
+        issue_entries.extend(entries)
+        continue
+    if os.path.realpath(target_dir) == os.path.realpath(workdir):
+        # The workdir itself is the matching checkout: the entries already live
+        # in its learnings file. Moving them would append-to-self and then be
+        # wiped by the L3 rewrite below. Keep them in place; the L3 git commit
+        # already propagates this file through the repo.
         issue_entries.extend(entries)
         continue
     repo_learnings = Path(target_dir) / '.multica' / 'learnings.jsonl'

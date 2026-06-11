@@ -140,6 +140,7 @@ candidates = [seen_keys[k] for k in candidate_keys if k in seen_keys]
 KEY_RE = re.compile(r'^[A-Za-z0-9._-]{1,64}$')
 UNSAFE_CHARS_RE = re.compile(r'[`\\\[\]<>{}|]')
 lines = []
+correction_lines = []
 stale_keys = []
 
 for e in candidates:
@@ -190,27 +191,42 @@ for e in candidates:
                 pass
 
         prefix = "[possibly stale] " if stale else ""
-        lines.append(f"- {prefix}[{key}] (conf:{conf}) {insight}")
+        # REQ-05-02: repo-scoped entries (user corrections routed by stop.sh)
+        # surface in a dedicated "Previous corrections on this repo" section,
+        # with touched files included for relevance filtering.
+        if e.get("scope") == "repo":
+            files_note = f" (files: {', '.join(safe_files[:5])})" if safe_files else ""
+            correction_lines.append(f"- {prefix}[{key}] (conf:{conf}) {insight}{files_note}")
+        else:
+            lines.append(f"- {prefix}[{key}] (conf:{conf}) {insight}")
         if stale:
             stale_keys.append(f"STALE_KEY:{key}")
 
 for l in lines:
     print(l)
+for l in correction_lines:
+    print(f"CORRECTION_LINE:{l}")
 for s in stale_keys:
     print(s)
 PYEOF
       )
       rm -f "$_learnings_tmp"
       insights=""
+      corrections=""
       while IFS= read -r _rline; do
         if [[ "$_rline" == STALE_KEY:* ]]; then
           _stale_keys_arr+=("${_rline#STALE_KEY:}")
+        elif [[ "$_rline" == CORRECTION_LINE:* ]]; then
+          corrections="${corrections}${_rline#CORRECTION_LINE:}"$'\n'
         else
           insights="${insights}${_rline}"$'\n'
         fi
       done <<< "$_py_result"
     if [[ -n "$insights" ]]; then
       context_parts+=("## Prior Learnings"$'\n'"$insights")
+    fi
+    if [[ -n "$corrections" ]]; then
+      context_parts+=("## Repo Corrections"$'\n'"Previous corrections on this repo:"$'\n'"$corrections")
     fi
 
     # Post [knowledge-warning] issue comment for stale learnings — batched into one comment,

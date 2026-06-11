@@ -2,6 +2,43 @@
 
 ## [2.3.0] - 2026-06-01
 
+### Added (T06 — learning pipeline, REQ-05-01/02/04)
+
+- **Correction-signal capture** (`hooks/stop.sh`): on clean session exits the hook
+  scans recent issue comments (7-day window anchored to `loop.json.start_time`)
+  for human-authored `[wrong: ...]` / `[revise: ...]` signals and writes each as
+  a repo-scoped learning with `confidence=9` — no agent involvement. Dedup key is
+  the first 16 hex chars of `sha256(insight[:200])`; a re-seen key is reinforced
+  (confidence reset to 9, `recorded_at` refreshed). Writes are atomic under an
+  flock-protected tmp-rename. Agent-authored comments are ignored. This makes the
+  behavior documented in HUMAN-GUIDE §2 actually exist.
+
+- **Repo-correction injection** (`hooks/session-start.sh`): repo-scoped learnings
+  now surface in a dedicated "Previous corrections on this repo:" context section
+  including touched file paths for relevance filtering.
+
+### Changed (T06)
+
+- **Decay aligned to spec** (`tools/curate-memory.sh`): confidence decays −1 per
+  week since `recorded_at` (floor 1), replacing the previous −2 (>90d) / −4 (>180d)
+  step decay. Entries are pruned only when confidence < 4 AND `recorded_at` is
+  older than 30 days; every prune is logged to `.multica/curate-memory.log` as
+  `[learning-pruned key=X confidence=Y]` (no silent removal). A `last_decayed_at`
+  marker makes repeated curate runs idempotent (no double-decay).
+
+- **Self-checkout routing fix** (`hooks/stop.sh`): when `MULTICA_WORKDIR` is
+  itself the git checkout matching a repo-scoped learning, routing now keeps the
+  entry in place instead of appending it to the same file and then losing it in
+  the issue-level rewrite.
+
+### Tests (T06)
+
+- `tests/smoke/test-stop-correction-capture.sh` (6 cases), `test-curate-decay.sh`
+  (6 cases), `test-session-start-corrections.sh` (4 cases). `run-all.sh` now also
+  runs the previously unregistered `test-stop-phase-dispatch.sh`. Scenario 8 in
+  `run-claude.sh` updated to relative timestamps (hardcoded ancient dates now
+  trigger the spec-aligned prune, which is decay behavior, not dedup behavior).
+
 ### Changed (honesty — review H2/H3)
 
 - **H2 — Removed vaporware "adapters" claims** (`README.md`): the repository has

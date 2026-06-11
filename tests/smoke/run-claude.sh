@@ -432,11 +432,15 @@ tmpdir_s8=$(mktemp -d)
 trap 'rm -rf "$tmpdir_s8"' EXIT
 
 mkdir -p "$tmpdir_s8/.multica"
-# Write two entries with same key (old one first, new one second)
-cat > "$tmpdir_s8/.multica/learnings.jsonl" << 'EOF'
+# Write two entries with same key (old one first, new one second).
+# Timestamps are relative to now: the spec-aligned decay/prune in curate-memory
+# (REQ-05-04) removes entries that are old AND low-confidence, so hardcoded
+# ancient dates would test pruning, not dedup.
+_s8_now=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+cat > "$tmpdir_s8/.multica/learnings.jsonl" << EOF
 {"ts":"2020-01-01T00:00:00Z","key":"test-config","insight":"old insight","confidence":8,"files":[]}
-{"ts":"2026-01-01T00:00:00Z","key":"test-config","insight":"new insight","confidence":9,"files":[]}
-{"ts":"2026-01-01T00:00:00Z","key":"other-key","insight":"other insight","confidence":7,"files":[]}
+{"ts":"${_s8_now}","key":"test-config","insight":"new insight","confidence":9,"files":[]}
+{"ts":"${_s8_now}","key":"other-key","insight":"other insight","confidence":7,"files":[]}
 EOF
 
 MULTICA_WORKDIR="$tmpdir_s8" bash "${PLUGIN_ROOT}/tools/curate-memory.sh" >/dev/null 2>&1

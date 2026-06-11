@@ -571,9 +571,13 @@ Rationale: Current v2.2.0 holds long sessions open until completion signal, bloc
 
 ---
 
-### **EPIC-10: Documentation & Reviewer Experience** `[NEEDS-DISCUSSION]`
+### **EPIC-10: Documentation & Reviewer Experience** `[READY]`
 
-> **Blocked:** Requirements extrapolated without design discussion. Do not implement until discussed and approved.
+> **Discussed 2026-06-11.** Scope approved as drafted. ADR filenames assigned at
+> implementation: reviewer-mental-model → `0004-reviewer-mental-model.md`,
+> operator-interventions → `0005-operator-interventions.md`. REQ-10-04's saved
+> example session lives in `docs/QUICKSTART.md` itself (no `.omc/sessions/`
+> artifact — that directory is local tooling state, not shipped docs).
 
 *Improve guides and comment trails for human reviewers and operators.*
 

@@ -106,6 +106,19 @@ Post these in issue comments to steer the agent:
 - Do not @mention the agent in response comments — it triggers off `on_comment` automatically.
 - `[HITL]` is a separate signal prefix used only by the HITL protocol; it is not part of the phase signal grammar above.
 
+### Good vs bad comments (REQ-10-03)
+
+Agents follow these rules so reviewers can scan the timeline; humans benefit from
+the same discipline:
+
+| ✗ Bad | ✓ Good | Why |
+|-------|--------|-----|
+| `[proceed] [skip:story-2]` on one line | Two comments, one signal each | Parsers and humans read line-by-line |
+| `Looks good but fix the header [looks-right]` | `[wrong: fix the header]` | A signal must match the actual intent — "looks-right plus a fix" is `[wrong:]` |
+| `[revise]` with feedback in a later comment | `[revise: move auth to middleware]` | The feedback inside the brackets is what becomes the learning |
+| Agent: `Done! @Reviewer please check` | Agent: `[result] Implemented X. Evidence: ...` | @mentions double-fire `on_comment`; signals carry the state |
+| Agent: bare `tests pass` | Agent: `[verification] exit_code=0 command="npm test" output_hash=...` | Claims need machine-checkable evidence |
+
 ---
 
 ## §3 Feature Overview
@@ -181,7 +194,7 @@ posting coordination summaries.
    ```
    Multiple issues showing `in_progress` simultaneously is **normal** — this is parallel execution.
 
-5. **Members work independently** — each member follows the standard 5-phase workflow.
+5. **Members work independently** — each member follows the standard 7-phase workflow.
    If a member is blocked, it posts `[HITL:leader]` (not `[HITL:human]`), which triggers
    the leader to wake up and route the decision.
 
@@ -217,29 +230,81 @@ have changed as `[possibly stale]`. `stop.sh` git-commits the file on DONE.
 ### Context Budget
 
 `multica-workflow` enforces: ≤35% remaining → write checkpoint comment before new
-complex work; ≤25% → checkpoint + set `blocked` (reason: `context-budget-critical`).
+complex work; ≤25% → graceful handoff — the agent persists its position to
+`loop.json.progress`, posts `[checkpoint] context-handoff | progress: <pct>%`,
+and exits 0. The daemon relaunches a fresh session automatically; no human
+action is needed (REQ-06-03).
 
-**You will see:** A `[checkpoint]` comment followed by a `blocked` status when the
-agent is running low on context. Re-enqueue the issue to continue.
+**You will see:** A `[checkpoint] context-handoff` comment and then a new session
+continuing from the saved sub-step. The issue is never set `blocked` for this.
 
 ---
 
 ## §4 For Reviewers
 
 You do not need to understand the agent internals to review its work. This section
-explains the comment trail.
+explains the phase state machine and the comment trail (REQ-10-01).
 
-### [phase] prefix — what the agent is doing
+### The 7-phase state machine
 
-Comments prefixed `[phase]` mark lifecycle transitions:
+```
+            [proceed]            (auto)            [looks-right]
+  spec ────────────────► plan ──────────► demo ────────────────► execute
+   ▲  │                                    ▲  │                     │
+   │  └─[revise: ...]──(new [spec:vN])     │  └─[wrong: ...]──     │ (internal
+   └────────────────────────────────────┘  └──(new [demo:vN])     │  exit-2 loop)
+                                                                    ▼
+  done ◄──── result ◄──────────────────────────────────────────  verify
+        (user confirms      (auto on pass, or [verify-failed]
+         or 72h timeout)     after 3 attempts)
+```
 
-| Comment | Meaning |
-|---------|---------|
-| `[phase] discover` | Agent is reading the issue and clarifying requirements |
-| `[phase] plan` | Agent has requirements; posting its work plan |
-| `[phase] execute` | Agent is implementing |
-| `[phase] verify` | Agent is running verification commands |
-| `[phase] report` | Agent is summarising the result |
+- **spec** — the agent writes a structured specification and posts `[spec:vN]`,
+  then exits. Your `[proceed]` or `[revise: ...]` comment starts the next session.
+- **plan** — internal decomposition into sub-steps; no comment, no waiting.
+- **demo** — a minimal visible version (mock-up, proof-of-concept) posted as
+  `[demo:vN]`. Reply `[looks-right]` or `[wrong: ...]`.
+- **execute** — full implementation; the only phase with internal iteration. You
+  see `[checkpoint:N]` only if it runs long.
+- **verify** — the verification command runs and `[verification]` records exit
+  code, command, and output hash. Three failures → `[verify-failed]`.
+- **result** — final summary as `[result]`; the issue closes on your confirmation
+  (or auto-closes after 72h with a `[result-timeout]` notice).
+
+### "You see X → do Y" quick table
+
+| You see | Phase | Expected action |
+|---------|-------|-----------------|
+| `[spec:vN]` | spec done | Reply `[proceed]` or `[revise: <feedback>]` |
+| `[demo:vN]` | demo done | Reply `[looks-right]` or `[wrong: <feedback>]` |
+| `[breakdown:vN]` | planning mode | Reply `[proceed]` or `[revise: <feedback>]` |
+| `[checkpoint:N]` | execute running | Nothing — informational |
+| `[checkpoint] context-handoff` | execute paused | Nothing — auto-resumes |
+| `[verification] exit_code=0 ...` | verify passed | Nothing |
+| `[verification] ... category=...` | verify failed | Nothing yet — agent is fixing |
+| `[verify-failed]` | verify exhausted | Reply `[retry]` or `[abort]` |
+| `[result]` | result | Confirm, or `[abort]` |
+| `[HITL] question_id=...` | any (blocked) | Reply in plain text to the comment |
+| `[loop-exhausted]` / `[loop-stuck]` | stuck | Investigate; `[retry]` resets the loop |
+
+### Example comment trail
+
+```
+agent:  [spec:v1] Spec: add POST /login ... acceptance criteria ...
+you:    [revise: must support OAuth2, not just passwords]
+agent:  [spec:v2] Spec: add POST /login with OAuth2 ...
+you:    [proceed]
+agent:  [phase] spec→plan
+agent:  [demo:v1] Demo: non-functional login form + route stub
+you:    [looks-right]
+agent:  [phase] demo→execute
+agent:  [verification] exit_code=0 command="npm test" output_hash=a1b2c3d4
+agent:  [phase] verify→result
+agent:  [result] Implemented POST /login (OAuth2) ... 14 tests passing.
+```
+
+Your `[revise: ...]` at step 2 was automatically captured as a repo-scoped
+learning (confidence 9) — the next task on this repo starts knowing it.
 
 ### [HITL] — agent needs your input
 
@@ -267,7 +332,56 @@ re-enqueued automatically. No action required unless you want to redirect.
 
 ---
 
-## §5 Troubleshooting
+## §5 For Operators
+
+Operators (squad leads, tech leads) monitor agent health and decide when to
+intervene (REQ-10-02).
+
+### Reading loop.json for health
+
+`.multica/state/<issue-id>/loop.json` is the live state. The fields that matter:
+
+| Field | Healthy | Intervene when |
+|-------|---------|----------------|
+| `phase` | progressing spec→…→done | unchanged across many sessions |
+| `iteration` / `max_iterations` | low, climbing slowly | approaching 50 — agent is thrashing |
+| `exit2_triggers_per_session` | 0–3 | high values — agent loops within one session |
+| `progress.pct` | climbing | frozen while iteration climbs |
+| `open_hitls` | empty | entries older than 48h — nobody answered |
+| `child_issues` (leader) | shrinking to all-done | a child silent past `squad_stuck_threshold_minutes` |
+
+### One-command status
+
+```bash
+bash tools/loop-status.sh              # all active issues
+bash tools/loop-status.sh <issue-id>   # one issue: iteration, phase, story bar, HITL
+```
+
+### When to intervene
+
+- **`[loop-exhausted]`** — the 50-iteration cap fired and the loop deactivated.
+  Read the last `[verification]` failures, fix the blocker (or refine the issue),
+  then post `[retry]` to reset the counter and re-enqueue.
+- **`[loop-stuck]`** — same failure 3+ times or a HITL aged past 48h. A human
+  answer or scope decision is needed; reply on the issue.
+- **Iteration high, progress.pct frozen** — the agent is retrying one sub-step.
+  Post a steering comment (it is read at the next session start) or `[abort]`.
+- **`blocked` with no `[HITL]` comment** — abnormal exit. Check
+  `.multica/logs/hook-errors.log` and `multica issue rerun <id>`.
+
+### Squad leader stuck-member checklist
+
+1. `bash tools/loop-status.sh <child-id>` — phase and iteration of the member.
+2. Child's last comment older than the stuck threshold? The leader's stop hook
+   posts `[checkpoint] squad-stuck` naming it (rate-limited to 1/hour).
+3. Check the child for `[HITL:leader]` the leader never answered — answer it.
+4. Member at capacity (≥6 in_progress)? Reassign or wait.
+5. Truly dead member → reassign the child issue; the leader picks up the new
+   status from issue metadata on its next checkpoint.
+
+---
+
+## §6 Troubleshooting
 
 **1. Agent reported completion but issue status did not change.**
 The agent did not call `<<cli:issue.status>> done` or the call failed silently.

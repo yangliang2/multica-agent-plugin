@@ -5,6 +5,33 @@
 > In development. Section headings carry the date each batch landed; the
 > version date is set at release (GA target: 2026-09-07).
 
+### Added (T14 — reviewer/operator docs, REQ-10-01..04) — 2026-06-11
+
+- **HUMAN-GUIDE §4 For Reviewers** rewritten for the 7-phase model: ASCII state
+  machine, per-phase explanations for non-agent audiences, a "You see X → do Y"
+  quick table covering every signal, and an example comment trail. (The old §4
+  table still described the retired 5-phase machine.)
+
+- **HUMAN-GUIDE §5 For Operators** (new): loop.json health-field table
+  (healthy vs intervene), `tools/loop-status.sh` usage, the four intervention
+  triggers (`[loop-exhausted]`, `[loop-stuck]`, thrash, abnormal exit) with
+  remedies, and the squad-leader stuck-member checklist. Troubleshooting
+  renumbered to §6.
+
+- **HUMAN-GUIDE §2**: good-vs-bad comment examples (one signal per line,
+  feedback inside the brackets, no @mentions, evidence-bearing claims).
+
+- **QUICKSTART "Example: Full 7-Phase Workflow"**: complete login-endpoint
+  trail spec→done including a `[revise:]` reply and the learning it captures,
+  plus the `[verification] command=` discovery — traceable in <10 minutes.
+
+- **ADRs**: `0004-reviewer-mental-model.md` (signals-over-internals contract),
+  `0005-operator-interventions.md` (closed intervention list).
+
+- **Staleness fixes**: HUMAN-GUIDE §3 Context Budget still claimed ≤25% sets
+  `blocked` — corrected to the T11 graceful handoff; squad walkthrough updated
+  5-phase → 7-phase. REQUIREMENTS EPIC-10 tag → `[READY]`.
+
 ### Added (T13 — installer verification, REQ-09-01..04) — 2026-06-11
 
 - **Structured `--verify`** (`bin/install.js`): prints PASS/FAIL per check with

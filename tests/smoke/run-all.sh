@@ -51,6 +51,7 @@ run_test "test-session-start-corrections.sh"
 run_test "test-session-start-hitl-replay.sh"
 run_test "test-run-verification.sh"
 run_test "test-session-start-verification-discovery.sh"
+run_test "test-session-start-planning-mode.sh"
 
 echo ""
 echo "Results: ${PASS} passed, ${FAIL} failed, ${SKIP} skipped"

@@ -2,6 +2,36 @@
 
 ## [2.3.0] - 2026-06-01
 
+### Added (T10 — squad coordination, REQ-04-03/04)
+
+- **Member metadata protocol** (`skills/core/squad-member-workflow.md`): members
+  read parent context via `parent_id` metadata (no shared-file polling — agents
+  may run on different machines) and write `member_status` JSON
+  (`{status, updated_at, summary}`) to issue metadata BEFORE any terminal
+  status change.
+
+- **Leader children checkpoint** (`hooks/stop.sh`,
+  `squad_children_checkpoint`): at every leader session end, reads
+  `loop.json.child_issues`, fetches each child's status and recent comments,
+  and: (a) all children `done` → sets `loop.json.phase=result` + posts
+  `[phase] execute→result`; (b) a non-done child silent longer than
+  `loop.json.squad_stuck_threshold_minutes` (default 120) → posts
+  `[checkpoint] squad-stuck` naming stuck members, rate-limited to one per
+  hour. Stuck elapsed time compares ONLY server-side comment timestamps
+  against each other (newest seen = reference clock) — the local clock is
+  never consulted, avoiding clock-skew false positives (REQ-04-04).
+
+- **loop.json schema**: `child_issues` (string array, validated) and
+  `squad_stuck_threshold_minutes` (1–100000, validated); leaders record child
+  IDs at creation time in the planning flow.
+
+- **`docs/adr/0003-squad-coordination.md`**: metadata schema, clock-source
+  rule, and checkpoint semantics.
+
+- **Tests**: `tests/smoke/test-stop-squad-checkpoint.sh` (5 cases: stuck
+  detection, hourly rate limit, all-done transition, phase comment, no-children
+  no-op).
+
 ### Added (T09 — planning mode, REQ-04-01/02)
 
 - **Planning mode detection** (`hooks/session-start.sh`): epic keywords

@@ -17,7 +17,12 @@ AskUserQuestion is **disabled**. All blocking questions go through the two-tier 
    - **Constraints** — scope limits, forbidden approaches, required patterns
    - **Dependencies** — prior work or artifacts this task depends on
 3. Fetch issue context: `<<cli:issue.get>>` — read `title`, `description`, `status`, `assignee`, `metadata`.
-4. If the delegation is ambiguous or a required dependency is incomplete, escalate via Tier 1 HITL before proceeding.
+4. **Metadata protocol (REQ-04-03)**: if metadata contains `parent_id`, fetch the
+   parent (`<<cli:issue.get>>` on `parent_id` and `<<cli:issue.metadata.list>>`)
+   to read the roster and the leader's current status. Issue metadata is the ONLY
+   state channel between squad agents — never poll shared files; other members may
+   run on different machines.
+5. If the delegation is ambiguous or a required dependency is incomplete, escalate via Tier 1 HITL before proceeding.
 
 **Exit**: Task, constraints, and dependencies are unambiguously understood. → Phase 1.
 
@@ -158,6 +163,14 @@ Member maintains independent bounce counter per `question_id` in issue metadata.
 ## Completion Reply Rules
 
 After Phase 4 verification passes:
+
+0. **Write completion status to metadata first (REQ-04-03)** — before any status
+   change, so the leader's checkpoint reads it on its next pass:
+   ```
+   <<cli:issue.metadata.set>> --key member_status --value '{"status":"done","updated_at":"<ISO8601>","summary":"<one line>"}'
+   ```
+   Use `"status":"blocked"` with a one-line reason when exiting blocked instead
+   of done. See `docs/adr/0003-squad-coordination.md` for the schema.
 
 1. Write a final summary comment: what was done, artifacts produced, caveats.
    `<<cli:issue.comment.add>>`

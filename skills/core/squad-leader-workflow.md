@@ -197,7 +197,9 @@ no test runs — only read-only exploration and breakdown authoring.
 4. **create children** — one `<<cli:issue.create.child>>` per breakdown row, with
    metadata: `parent_id` (this issue), `epic_id` (this issue or its epic), `squad_id`
    (from roster), and `blocks:` links following the dependency column. Assign members
-   per the capacity check (Section 3).
+   per the capacity check (Section 3). **Record every created child ID in
+   `loop.json.child_issues`** — the stop hook's progress checkpoint (REQ-04-04) reads
+   this list to detect stuck members and the all-done transition.
 5. After creation, post `[phase] plan→execute` summary listing the child issue IDs,
    then coordinate per the normal leader workflow.
 
@@ -205,7 +207,26 @@ See `docs/adr/0002-child-issue-linking.md` for the linking schema rationale.
 
 ---
 
-## 10. Daemon-Safe Operating Rules
+## 10. Reading Member State (REQ-04-03/04)
+
+Member state lives in issue metadata and comments — never in shared files (members
+may run on other machines):
+
+- **Per-member status**: read `member_status` from each child issue's metadata
+  (`<<cli:issue.metadata.list>>`). Members write it before marking done/blocked.
+- **Automatic checkpoint**: the stop hook reads `loop.json.child_issues` at every
+  leader session end and compares each child's latest comment timestamp against the
+  newest server timestamp seen across all children (pure server-time comparison — no
+  local clock). A child with no new activity for more than
+  `loop.json.squad_stuck_threshold_minutes` (default 120) triggers a
+  `[checkpoint] squad-stuck` comment naming the stuck members (rate-limited to one
+  per hour). When ALL children report status `done`, the hook advances
+  `loop.json.phase` to `result` and posts `[phase] execute→result`.
+- Schema details: `docs/adr/0003-squad-coordination.md`.
+
+---
+
+## 11. Daemon-Safe Operating Rules
 
 - Never call `AskUserQuestion`. The leader runs headless.
 - `no_action` turns: call `<<cli:squad.activity>> outcome=no_action`, write the marker, exit. No comment.
@@ -214,7 +235,7 @@ See `docs/adr/0002-child-issue-linking.md` for the linking schema rationale.
 
 ---
 
-## 11. Turn Checklist
+## 12. Turn Checklist
 
 - [ ] All delegatable tasks delegated via the correct strategy (A or B).
 - [ ] No double-fire: no task dispatched via both A and B.

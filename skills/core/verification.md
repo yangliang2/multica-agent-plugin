@@ -95,6 +95,31 @@ the real command, read the real output, and record it faithfully.
 | "Partial check is enough" | Partial proves nothing |
 | "Different words so rule doesn't apply" | Spirit over letter |
 
+## Program-Enforced Runner (v2.3.0 — REQ-07-01/02/03)
+
+Prefer the runner over hand-assembling evidence — it cannot mis-transcribe:
+
+```
+bash $MULTICA_PLUGIN_ROOT/tools/run-verification.sh <issue_id> [command]
+```
+
+- **Command precedence:** explicit argument > `loop.json.verification_cmd`
+  (discovered from the issue description's `[verification] command="..."` line
+  at session start; immutable once set) > ecosystem default (`npm test`,
+  `pytest`, `cargo test`, `go test ./...`).
+- **It runs the command fresh**, captures full output, computes
+  `output_hash` (first 8 hex of SHA256), and appends an attempt record to
+  `.multica/state/{issue_id}/verify-attempts.jsonl`.
+- **Failure categorization:** on non-zero exit the output is matched against
+  known patterns — `syntax | import | timeout | permission | assertion |
+  unknown` — and the category is included in the comment line. Read it to
+  steer the next fix; do not blindly retry the same change.
+- **Flaky detection:** if a previous attempt produced the same `output_hash`
+  with a different exit code, the line carries `flaky_suspect=true` — likely
+  an environment issue, not your code. Retry once before treating it as real.
+- Its stdout is the ready-to-post `[verification]` comment body; its exit code
+  is the verification command's exit code.
+
 ## Evidence Write-Back Format
 
 After verification passes, write result to the multica issue comment:
@@ -104,7 +129,9 @@ After verification passes, write result to the multica issue comment:
 <关键输出摘录，≤10行>
 ```
 
-If exit code is non-zero, write actual state with full evidence — do not suppress.
+On failure the runner appends `category=<x>` (and `flaky_suspect=true` when
+detected) to the same line. If exit code is non-zero, write actual state with
+full evidence — do not suppress.
 
 ## Red Flags — STOP
 

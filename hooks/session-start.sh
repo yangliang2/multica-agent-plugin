@@ -254,6 +254,53 @@ if [[ -n "$issue_id" ]]; then
   LOOP_JSON="${MULTICA_WORKDIR}/.multica/state/${issue_id}/loop.json"
 
   if [[ -f "$LOOP_JSON" ]]; then
+    # REQ-07-01: verification command discovery — parse the issue description
+    # for [verification] command="..." and store it in loop.json. Immutable
+    # once set: a non-empty verification_cmd is never overwritten, so the same
+    # command is used across all verify attempts.
+    _vc_existing=$(python3 -c "
+import json, sys
+try:
+    print(json.load(open(sys.argv[1])).get('verification_cmd', ''))
+except Exception:
+    print('')
+" "$LOOP_JSON" 2>/dev/null || echo "")
+    if [[ -z "$_vc_existing" ]] && command -v multica >/dev/null 2>&1; then
+      _issue_get_tmp=$(mktemp)
+      if multica issue get "$issue_id" --output json > "$_issue_get_tmp" 2>/dev/null; then
+        python3 - "$_issue_get_tmp" "$LOOP_JSON" <<'VCMD_PY' || true
+import json, sys, os, re
+issue_file, loop_json = sys.argv[1], sys.argv[2]
+try:
+    issue = json.load(open(issue_file))
+except Exception:
+    sys.exit(0)
+desc = ''
+for k in ('description', 'body', 'content'):
+    v = issue.get(k)
+    if isinstance(v, str) and v:
+        desc = v
+        break
+m = re.search(r'\[verification\]\s+command="([^"\n]{1,512})"', desc)
+if not m:
+    sys.exit(0)
+try:
+    d = json.load(open(loop_json))
+except Exception:
+    sys.exit(0)
+if d.get('verification_cmd'):
+    sys.exit(0)  # immutable once set
+d['verification_cmd'] = m.group(1)
+tmp = loop_json + '.tmp'
+with open(tmp, 'w') as f:
+    json.dump(d, f, indent=2)
+    f.write('\n')
+os.replace(tmp, loop_json)
+VCMD_PY
+      fi
+      rm -f "$_issue_get_tmp"
+    fi
+
     # H6: replace awk JSON parsing with python3 for correctness on all platforms
     _loop_fields=$(python3 -c "
 import json, sys
@@ -328,7 +375,7 @@ except Exception:
           # existing loop hint is sufficient for execute phase
           ;;
         verify)
-          _phase_guidance="You are in the verify phase. Run the verification_cmd from loop.json (or detect from ecosystem). Post [verification] comment with exit_code, command, output_hash. If verification passes: set loop.json phase='verify' and emit DONE (auto-advances to result). If it fails after 3 attempts: post [verify-failed] and emit DONE."
+          _phase_guidance="You are in the verify phase. Run: bash \$MULTICA_PLUGIN_ROOT/tools/run-verification.sh ${issue_id} — it executes the verification_cmd (or ecosystem default), hashes output, categorizes failures, and prints the ready-to-post [verification] comment body. Post that body as a comment. On failure, read the category= field to steer the fix (don't blindly retry); flaky_suspect=true means same output hash with different exit codes — retry once before treating as real. If verification passes: emit DONE (auto-advances to result). If it fails after 3 attempts: post [verify-failed] and emit DONE."
           ;;
         result)
           _phase_guidance="You are in the result phase. Synthesize a final summary of what was done. Post [result] comment with summary and any caveats. Set issue status done (<<cli:issue.status>>). Emit DONE."

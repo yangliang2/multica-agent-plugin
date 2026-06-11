@@ -98,6 +98,58 @@ function writeSettings(settings) {
   fs.renameSync(tmp, SETTINGS_PATH);
 }
 
+// REQ-09-01: semver-ish comparison ("1.2.3" vs "0.4.0") → -1 | 0 | 1
+function cmpVersion(a, b) {
+  const pa = String(a).split('.').map(n => parseInt(n, 10) || 0);
+  const pb = String(b).split('.').map(n => parseInt(n, 10) || 0);
+  for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
+    const x = pa[i] || 0, y = pb[i] || 0;
+    if (x !== y) return x < y ? -1 : 1;
+  }
+  return 0;
+}
+
+function getCmdVersion(cmd) {
+  const r = spawnSync(cmd, ['--version'], { encoding: 'utf8' });
+  if (r.error) return null;
+  const m = ((r.stdout || '') + (r.stderr || '')).match(/(\d+\.\d+\.\d+)/);
+  return m ? m[1] : '';
+}
+
+// REQ-09-04: daemon deployments have MULTICA_AGENT_SESSION=1 or MULTICA_WORKDIR
+// set; shell-profile and "restart Claude Code" guidance does not apply there.
+function isDaemonMode() {
+  return process.env.MULTICA_AGENT_SESSION === '1' || !!process.env.MULTICA_WORKDIR;
+}
+
+const HEALTH_PATH = path.join(HOOKS_TARGET, 'install-health.json');
+
+// REQ-09-03: machine-readable install diagnostics, written next to the hooks
+// (stable location; the install runs outside any multica workdir, so the
+// AC's workdir-relative .multica/ path is not resolvable at install time).
+function writeHealth(steps) {
+  const health = {
+    timestamp: new Date().toISOString(),
+    plugin_version: VERSION,
+    os: `${os.platform()} ${os.release()}`,
+    node: process.version,
+    shell: detectShell(),
+    daemon_mode: isDaemonMode(),
+    multica_version: getCmdVersion('multica'),
+    python3_version: getCmdVersion('python3'),
+    git_version: getCmdVersion('git'),
+    steps,
+  };
+  try {
+    fs.mkdirSync(HOOKS_TARGET, { recursive: true });
+    fs.writeFileSync(HEALTH_PATH, JSON.stringify(health, null, 2) + '\n');
+    ok(`Install health written to ${HEALTH_PATH}`);
+  } catch (e) {
+    warn(`Could not write install health: ${e.message}`);
+  }
+  return health;
+}
+
 function detectShell() {
   const shell = process.env.SHELL || '';
   if (shell.includes('zsh')) return 'zsh';
@@ -165,10 +217,19 @@ function mergeHooksToSettings() {
 }
 
 function writePluginRoot() {
+  if (isDaemonMode()) {
+    // REQ-09-04: daemon processes don't read interactive shell profiles
+    warn('Daemon mode detected (MULTICA_AGENT_SESSION/MULTICA_WORKDIR set).');
+    warn(`Skipping shell profile. Set in the daemon startup environment instead:`);
+    warn(`  MULTICA_PLUGIN_ROOT="${PLUGIN_ROOT}"  MULTICA_AGENT_SESSION=1`);
+    return;
+  }
   const shell = detectShell();
   const profile = getShellProfile(shell);
-  const exportLine = `\nexport MULTICA_PLUGIN_ROOT="${PLUGIN_ROOT}"`;
-  const agentLine = `\nexport MULTICA_AGENT_SESSION=0  # disable multica hooks in non-daemon sessions`;
+  // REQ-09-02: fish uses set -gx, not export
+  const lines = shell === 'fish'
+    ? `\nset -gx MULTICA_PLUGIN_ROOT "${PLUGIN_ROOT}"\nset -gx MULTICA_AGENT_SESSION 0  # disable multica hooks in non-daemon sessions\n`
+    : `\nexport MULTICA_PLUGIN_ROOT="${PLUGIN_ROOT}"\nexport MULTICA_AGENT_SESSION=0  # disable multica hooks in non-daemon sessions\n`;
 
   try {
     const existing = fs.existsSync(profile) ? fs.readFileSync(profile, 'utf8') : '';
@@ -176,8 +237,11 @@ function writePluginRoot() {
       ok(`MULTICA_PLUGIN_ROOT already set in ${profile}`);
       return;
     }
-    fs.appendFileSync(profile, exportLine + agentLine + '\n');
-    ok(`MULTICA_PLUGIN_ROOT added to ${profile}`);
+    // REQ-09-02: backup before modifying the user's profile
+    if (existing) fs.writeFileSync(profile + '.bak', existing);
+    fs.mkdirSync(path.dirname(profile), { recursive: true });
+    fs.appendFileSync(profile, lines);
+    ok(`MULTICA_PLUGIN_ROOT added to ${profile} (backup: ${profile}.bak)`);
     warn(`Run: source ${profile}  (or open a new terminal)`);
   } catch (e) {
     warn(`Could not write to ${profile}: ${e.message}`);
@@ -207,28 +271,79 @@ function checkDeps() {
   return allOk;
 }
 
+// REQ-09-01: structured verification — PASS/FAIL per check, remediation steps,
+// exit 0 only if every check passes.
 function verify() {
   console.log(`\n${B}multica-agent-plugin v${VERSION} — verify${X}\n`);
-  checkDeps();
+  const checks = [];
+  const add = (name, pass, remedy) => checks.push({ name, pass, remedy });
 
-  console.log(`\n${B}--- Hooks ---${X}`);
-  const scripts = ['stop.sh', 'pre-tool.sh', 'session-start.sh'];
-  for (const s of scripts) {
+  // Dependencies + minimum multica version
+  const MULTICA_MIN = '0.4.0';
+  const mver = getCmdVersion('multica');
+  add(`multica CLI present and >= ${MULTICA_MIN}`,
+    mver !== null && mver !== '' && cmpVersion(mver, MULTICA_MIN) >= 0,
+    'npm install -g @multica/cli');
+  add('python3 present', getCmdVersion('python3') !== null,
+    'install python3 >= 3.8 via your package manager');
+  add('git present', getCmdVersion('git') !== null,
+    'install git 2.x via your package manager');
+
+  // Hooks installed and executable
+  for (const s of ['stop.sh', 'pre-tool.sh', 'session-start.sh']) {
     const p = path.join(HOOKS_TARGET, s);
-    fs.existsSync(p) ? ok(`${s}: found at ${p}`) : warn(`${s}: NOT found at ${p} — run install`);
+    let execOk = false;
+    try { fs.accessSync(p, fs.constants.X_OK); execOk = true; } catch (e) { /* missing or not executable */ }
+    add(`hook ${s} exists and is executable`, execOk,
+      'npx github:yangliang2/multica-agent-plugin');
   }
 
-  console.log(`\n${B}--- Settings ---${X}`);
-  const settings = readSettings();
+  // Hook registrations in settings.json
+  let settings = {};
+  try { settings = readSettings(); } catch (e) { /* readSettings exits on corrupt file */ }
   const hooks = settings.hooks || {};
   for (const event of ['Stop', 'PreToolUse', 'SessionStart']) {
     const groups = hooks[event] || [];
     const registered = groups.some(g =>
       Array.isArray(g.hooks) && g.hooks.some(h => h.command && h.command.includes('multica'))
     );
-    registered ? ok(`${event}: registered`) : warn(`${event}: NOT registered — run install`);
+    add(`${event} hook registered in settings.json`, registered,
+      'npx github:yangliang2/multica-agent-plugin');
   }
+
+  // Shell profile (skipped in daemon mode — REQ-09-04)
+  if (isDaemonMode()) {
+    ok('daemon mode: shell profile check skipped (set MULTICA_PLUGIN_ROOT in daemon env)');
+  } else {
+    const profile = getShellProfile(detectShell());
+    const inProfile = fs.existsSync(profile)
+      && fs.readFileSync(profile, 'utf8').includes('MULTICA_PLUGIN_ROOT');
+    add(`MULTICA_PLUGIN_ROOT exported in ${profile}`, inProfile,
+      `add: export MULTICA_PLUGIN_ROOT="${PLUGIN_ROOT}" (or re-run the installer)`);
+  }
+
+  // Install health report (REQ-09-03)
+  if (fs.existsSync(HEALTH_PATH)) {
+    try {
+      const h = JSON.parse(fs.readFileSync(HEALTH_PATH, 'utf8'));
+      const failed = (h.steps || []).filter(s => !s.ok).map(s => s.name);
+      ok(`last install: ${h.timestamp} (v${h.plugin_version})${failed.length ? ` — failed steps: ${failed.join(', ')}` : ''}`);
+    } catch (e) { warn(`install-health.json unreadable: ${e.message}`); }
+  }
+
   console.log('');
+  let failures = 0;
+  for (const c of checks) {
+    if (c.pass) {
+      console.log(`${G}PASS${X}  ${c.name}`);
+    } else {
+      failures++;
+      console.log(`${R}FAIL${X}  ${c.name}`);
+      console.log(`      remedy: ${c.remedy}`);
+    }
+  }
+  console.log(`\n${failures === 0 ? G + 'All checks passed.' : R + `${failures} check(s) failed.`}${X}\n`);
+  process.exitCode = failures === 0 ? 0 : 1;
 }
 
 function removeFromShellProfile() {
@@ -241,6 +356,9 @@ function removeFromShellProfile() {
     // Remove the export lines written by writePluginRoot()
     content = content.replace(/\nexport MULTICA_PLUGIN_ROOT="[^"]*"\n?/g, '\n');
     content = content.replace(/\nexport MULTICA_AGENT_SESSION=0[^\n]*\n?/g, '\n');
+    // fish variants (set -gx)
+    content = content.replace(/\nset -gx MULTICA_PLUGIN_ROOT "[^"]*"\n?/g, '\n');
+    content = content.replace(/\nset -gx MULTICA_AGENT_SESSION 0[^\n]*\n?/g, '\n');
     // Collapse runs of blank lines left behind
     content = content.replace(/\n{3,}/g, '\n\n');
     if (content !== before) {
@@ -306,14 +424,41 @@ Environment:
 `);
 } else {
   console.log(`\n${B}multica-agent-plugin v${VERSION} — install${X}\n`);
-  const depsOk = checkDeps();
-  if (!depsOk) {
-    warn('Some required dependencies are missing. Install them and re-run.');
-  }
+  // REQ-09-03: record each install step for install-health.json
+  const steps = [];
+  const step = (name, fn) => {
+    try {
+      const r = fn();
+      steps.push({ name, ok: r !== false, detail: '' });
+    } catch (e) {
+      steps.push({ name, ok: false, detail: e.message });
+      err(`${name} failed: ${e.message}`);
+    }
+  };
+
+  step('check-dependencies', () => {
+    const depsOk = checkDeps();
+    if (!depsOk) warn('Some required dependencies are missing. Install them and re-run.');
+    return depsOk;
+  });
   console.log('');
-  installHooks();
-  mergeHooksToSettings();
-  writePluginRoot();
-  console.log(`\n${G}${B}Installation complete.${X}`);
+  step('install-hooks', installHooks);
+  step('register-settings', mergeHooksToSettings);
+  step('shell-profile', writePluginRoot);
+  writeHealth(steps);
+
+  const failedSteps = steps.filter(s => !s.ok);
+  if (failedSteps.length) {
+    warn(`Completed with ${failedSteps.length} failed step(s): ${failedSteps.map(s => s.name).join(', ')}`);
+    warn(`Details in ${HEALTH_PATH}`);
+  } else {
+    console.log(`\n${G}${B}Installation complete.${X}`);
+  }
+  if (isDaemonMode()) {
+    // REQ-09-04: no interactive Claude Code to restart in daemon deployments
+    console.log(`Daemon deployment: ensure MULTICA_PLUGIN_ROOT and MULTICA_AGENT_SESSION=1 are set in the daemon's environment.`);
+  } else {
+    console.log(`Restart Claude Code (or open a new terminal) to activate the hooks.`);
+  }
   console.log(`Run: node bin/install.js --verify  to confirm\n`);
 }

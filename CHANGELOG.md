@@ -5,6 +5,33 @@
 > In development. Section headings carry the date each batch landed; the
 > version date is set at release (GA target: 2026-09-07).
 
+### Added (T13 — installer verification, REQ-09-01..04) — 2026-06-11
+
+- **Structured `--verify`** (`bin/install.js`): prints PASS/FAIL per check with
+  a remediation line, exits 1 if any check fails. Checks: multica CLI present
+  and >= 0.4.0 (new `cmpVersion` helper), python3/git present, each hook
+  exists AND is executable, all three hook registrations in settings.json,
+  `MULTICA_PLUGIN_ROOT` in the shell profile.
+
+- **`install-health.json`** (REQ-09-03): every install writes a diagnostics
+  report (timestamp, OS, shell, tool versions, per-step success/failure) to
+  `~/.claude/hooks/multica/install-health.json`; `--verify` surfaces the last
+  install's failed steps. Written to the installer-owned stable dir, not the
+  AC's workdir-relative path (no workdir exists at install time).
+
+- **Daemon mode detection** (REQ-09-04): `MULTICA_AGENT_SESSION=1` or
+  `MULTICA_WORKDIR` set → skip the shell-profile write and the "Restart Claude
+  Code" instruction, print daemon env guidance
+  (`MULTICA_PLUGIN_ROOT` + `MULTICA_AGENT_SESSION=1` in startup env) instead.
+
+- **Shell profile hardening** (REQ-09-02): profile backed up to `.bak` before
+  modification; fish gets `set -gx` syntax instead of bash `export`;
+  `--uninstall` removes the fish-style lines too.
+
+- **Tests**: 6 new `cmpVersion` unit tests (21 total unit tests).
+  REQUIREMENTS EPIC-09 tag `[NEEDS-DISCUSSION]` → `[READY]` with the
+  install.js-only decision recorded.
+
 ### Added (T12 — safe-exec hybrid guard, REQ-08-01/02) — 2026-06-11
 
 - **Hybrid allowlist** (`hooks/pre-tool.sh` + `tools/safe-exec.allow.list` +

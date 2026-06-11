@@ -500,9 +500,14 @@ Rationale: Current v2.2.0 holds long sessions open until completion signal, bloc
 
 ---
 
-### **EPIC-09: Installation & Verification Tooling** `[NEEDS-DISCUSSION]`
+### **EPIC-09: Installation & Verification Tooling** `[READY]`
 
-> **Blocked:** Requirements extrapolated without design discussion. Do not implement until discussed and approved. Note: REQ-09-01 (--verify) and REQ-09-02 (auto shell profile) are partially implemented already in `bin/install.js`.
+> **Discussed 2026-06-11.** Decision: all installer enhancements land in
+> `bin/install.js` (the npx path); `install.sh` stays deprecated (exit 1 → npx)
+> and is NOT resurrected — no dual-track drift. Deviation from literal ACs:
+> `install-health.json` is written to `~/.claude/hooks/multica/` (stable,
+> installer-owned) rather than the workdir-relative `.multica/` path, which is
+> not resolvable at install time.
 
 *Improve first-time setup experience and post-install health checks.*
 

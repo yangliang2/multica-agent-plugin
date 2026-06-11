@@ -122,3 +122,34 @@ test('CLAUDE_SETTINGS_PATH: ~/.config path is rejected', () => {
   const p = path.join(os.homedir(), '.config', 'evil.json');
   assert.throws(() => validateSettingsPath(p), /must be inside/);
 });
+
+// ── cmpVersion tests (REQ-09-01) ─────────────────────────────────────────────
+
+const cmpVersionMatch = stubbed.match(/function cmpVersion\(a, b\) \{[\s\S]*?^}/m);
+if (!cmpVersionMatch) throw new Error('Could not extract cmpVersion');
+const cmpVersion = new Function('return ' + cmpVersionMatch[0])();
+
+test('cmpVersion: equal versions → 0', () => {
+  assert.equal(cmpVersion('0.4.0', '0.4.0'), 0);
+});
+
+test('cmpVersion: lower version → -1', () => {
+  assert.equal(cmpVersion('0.3.9', '0.4.0'), -1);
+});
+
+test('cmpVersion: higher version → 1', () => {
+  assert.equal(cmpVersion('1.0.0', '0.4.0'), 1);
+});
+
+test('cmpVersion: shorter form padded with zeros', () => {
+  assert.equal(cmpVersion('1.2', '1.2.0'), 0);
+  assert.equal(cmpVersion('1.2', '1.2.1'), -1);
+});
+
+test('cmpVersion: double-digit segments compared numerically', () => {
+  assert.equal(cmpVersion('0.10.0', '0.9.0'), 1);
+});
+
+test('cmpVersion: garbage input treated as zeros', () => {
+  assert.equal(cmpVersion('abc', '0.0.0'), 0);
+});

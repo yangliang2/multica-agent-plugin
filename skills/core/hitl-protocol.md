@@ -128,12 +128,33 @@ If the daemon reaper does not fire, that is a daemon configuration issue, not an
 
 ---
 
+## HITL State Tracking (loop.json) — v2.3.0
+
+Every HITL event is tracked in `loop.json` so resumption is mechanical, not archaeological:
+
+- **On posting an `[HITL]` comment**, append to `loop.json.open_hitls`:
+  `{"question_id": "<uuid>", "asked_at": "<ISO8601>", "tier": "leader" | "human"}`
+- **On session resume**, `hooks/session-start.sh` automatically fetches recent comments,
+  matches human replies to each open `question_id` (direct `question_id=` mention or a
+  thread reply to the agent's `[HITL]` comment), injects the answers into context as
+  "HITL Replies Detected", and moves each answered entry to `loop.json.resolved_hitls`
+  with `answer` and `answered_at` fields. The agent does NOT need to scan comments itself.
+- **Never re-post** a question whose `question_id` appears in `resolved_hitls`.
+
+**Free-form replies:** the human's reply need not match an offered Option A/B. Any reply
+is captured as the answer. If the reply is too unclear to act on, raise a NEW `[HITL]`
+with a fresh `question_id` that quotes the unclear reply and asks a narrower question —
+do not re-ask the same `question_id`.
+
+---
+
 ## Multi-HITL Threads
 
 If a single task requires multiple HITL events across separate blocked cycles:
-- Each event gets its own unique `question_id`.
-- On resume, the agent searches comments for the most recent `[HITL]` comment matching its
-  current `question_id` context (stored in metadata via `<<cli:issue.metadata.set>>`).
+- Each event gets its own unique `question_id`, tracked in `loop.json.open_hitls`.
+- On resume, answered questions arrive in context via the session-start replay
+  (see "HITL State Tracking" above); `blocked_reason` metadata remains the quick
+  pointer to the most recent blocking question.
 - Do not re-raise a HITL question that has already been answered in a prior comment.
 
 ---
@@ -170,6 +191,13 @@ with reason `hitl-timeout-no-safe-default`.
 
 Default timeout: `$MULTICA_HITL_TIMEOUT_HOURS` hours (configurable via
 `capabilities/claude-code.json` thresholds.hitl_timeout_hours).
+
+**48h hard timeout (REQ-06-01):** if a `[HITL:human]` question remains unanswered
+past `$MULTICA_HITL_HUMAN_TIMEOUT_HOURS` (default 48), session-start injects a
+hard-timeout signal instead of the auto-degradation alert. The agent must post a
+`[loop-stuck]` timeout notice, keep (or set) status `blocked`, and exit — no
+conservative-option guessing at this stage. This guarantees a stalled issue leaves
+a visible trace in the timeline instead of waiting silently forever.
 
 ---
 

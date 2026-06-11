@@ -338,6 +338,108 @@ except Exception:
         context_parts+=("## Phase Guidance"$'\n'"$_phase_guidance")
       fi
     fi
+
+    # REQ-06-02: HITL replay — if loop.json.open_hitls is non-empty, look for a
+    # human reply to each question_id (direct mention or thread reply to the
+    # agent's [HITL] comment), inject the answers, and move the entries to
+    # resolved_hitls so the question is never re-posted. Runs regardless of
+    # active flag: blocked issues are exactly the ones with open HITLs.
+    _open_hitl_count=$(python3 -c "
+import json, sys
+try:
+    v = json.load(open(sys.argv[1])).get('open_hitls', [])
+    print(len(v) if isinstance(v, list) else 0)
+except Exception:
+    print(0)
+" "$LOOP_JSON" 2>/dev/null || echo 0)
+    if [[ "${_open_hitl_count:-0}" -gt 0 ]] && command -v multica >/dev/null 2>&1; then
+      _hitl_comments_tmp=$(mktemp)
+      if multica issue comment list "$issue_id" --recent 20 --output json \
+          > "$_hitl_comments_tmp" 2>/dev/null; then
+        _hitl_replay=$(python3 - "$LOOP_JSON" "$_hitl_comments_tmp" <<'HITL_PY' || true
+import json, sys, os
+
+loop_json, comments_file = sys.argv[1], sys.argv[2]
+
+try:
+    d = json.load(open(loop_json))
+except Exception:
+    sys.exit(0)
+open_hitls = d.get('open_hitls', [])
+if not isinstance(open_hitls, list) or not open_hitls:
+    sys.exit(0)
+
+try:
+    raw = json.load(open(comments_file))
+except Exception:
+    sys.exit(0)
+if isinstance(raw, dict):
+    raw = raw.get('comments') or raw.get('threads') or raw.get('items') or []
+if not isinstance(raw, list):
+    sys.exit(0)
+
+def is_human(c):
+    return (c.get('author') or {}).get('type') != 'agent'
+
+resolved = d.get('resolved_hitls', [])
+if not isinstance(resolved, list):
+    resolved = []
+still_open = []
+answered_lines = []
+
+for h in open_hitls:
+    if not isinstance(h, dict):
+        continue
+    qid = str(h.get('question_id', ''))
+    if not qid:
+        still_open.append(h)
+        continue
+    # ids of comments carrying this question_id (the agent's [HITL] post)
+    hitl_comment_ids = {c.get('id') for c in raw if isinstance(c, dict)
+                        and f'question_id={qid}' in str(c.get('content', ''))}
+    answer = None
+    for c in raw:
+        if not isinstance(c, dict) or not is_human(c):
+            continue
+        content = str(c.get('content', ''))
+        if content.lstrip().startswith('[HITL'):
+            continue  # another question, not an answer
+        if qid in content or c.get('parent_id') in hitl_comment_ids:
+            if answer is None or str(c.get('created_at', '')) > str(answer.get('created_at', '')):
+                answer = c
+    if answer is not None:
+        # free-form replies accepted (REQ-06-01); normalize whitespace, cap length
+        text = ' '.join(str(answer.get('content', '')).split())[:500]
+        entry = dict(h)
+        entry['answer'] = text
+        entry['answered_at'] = answer.get('created_at', '')
+        resolved.append(entry)
+        answered_lines.append(f"- question_id={qid}: {text}")
+    else:
+        still_open.append(h)
+
+if answered_lines:
+    d['open_hitls'] = still_open
+    d['resolved_hitls'] = resolved
+    tmp = loop_json + '.tmp'
+    with open(tmp, 'w') as f:
+        json.dump(d, f, indent=2)
+        f.write('\n')
+    os.replace(tmp, loop_json)
+    print("Human replies to your open HITL questions were found in issue comments.")
+    print("Do NOT re-post these questions. If a reply is too unclear to act on,")
+    print("raise a NEW [HITL] with a fresh question_id referencing the reply.")
+    print("Answers:")
+    for l in answered_lines:
+        print(l)
+HITL_PY
+)
+        if [[ -n "${_hitl_replay:-}" ]]; then
+          context_parts+=("## HITL Replies Detected"$'\n'"$_hitl_replay")
+        fi
+      fi
+      rm -f "$_hitl_comments_tmp"
+    fi
   fi
 fi
 
@@ -501,7 +603,21 @@ try:
 except Exception:
     print('no')
 " "$_hours" "$_threshold" 2>/dev/null || echo "no")
-      if [[ "$_timed_out" == "yes" ]]; then
+      # REQ-06-01: 48h hard timeout for unanswered HITL — the issue must not
+      # stall silently forever. Takes precedence over soft auto-degradation.
+      _human_threshold="${MULTICA_HITL_HUMAN_TIMEOUT_HOURS:-48}"
+      _hard_timed_out=$(python3 -c "
+import sys
+try:
+    print('yes' if float(sys.argv[1]) > float(sys.argv[2]) else 'no')
+except Exception:
+    print('no')
+" "$_hours" "$_human_threshold" 2>/dev/null || echo "no")
+      if [[ "$_hard_timed_out" == "yes" ]]; then
+        context_parts=("## HITL Hard Timeout"$'\n'"[HITL] question_id=${_qid} has waited ${_hours}h — beyond the ${_human_threshold}h human-reply window.
+Post a timeout notice now: '[loop-stuck] HITL question ${_qid} unanswered for ${_hours}h. Issue remains blocked pending human reply.'
+Then set issue status blocked (<<cli:issue.status>>) and exit. Do NOT proceed on guesses." "${context_parts[@]}")
+      elif [[ "$_timed_out" == "yes" ]]; then
         context_parts=("## HITL Timeout Alert"$'\n'"[HITL:timeout] question_id=${_qid} — waited ${_hours}h (threshold: ${_threshold}h).
 Proceed with the most conservative available option without waiting for human reply.
 Post a comment explaining: 'Waited ${_hours}h without reply, proceeding with most conservative option: <describe your choice>'." "${context_parts[@]}")

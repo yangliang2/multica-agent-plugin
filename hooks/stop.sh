@@ -161,6 +161,13 @@ try:
         hv = d.get(hf, [])
         if not isinstance(hv, list) or any(not isinstance(x, dict) for x in hv):
             print(f'bad_{hf}'); sys.exit(0)
+    # v2.3.0 squad coordination (REQ-04-03/04)
+    ci = d.get('child_issues', [])
+    if not isinstance(ci, list) or any(not isinstance(x, str) for x in ci):
+        print('bad_child_issues'); sys.exit(0)
+    st = d.get('squad_stuck_threshold_minutes', 120)
+    if not isinstance(st, (int, float)) or not (1 <= int(st) <= 100000):
+        print('bad_squad_stuck_threshold'); sys.exit(0)
     print('ok')
 except Exception as e:
     print(f'parse_error')
@@ -268,6 +275,139 @@ except Exception:
   fi
 fi
 
+# REQ-04-04: leader children checkpoint. Reads each child issue's status and
+# latest comment timestamps; stuck detection compares ONLY server-side
+# created_at timestamps against each other (newest seen = reference clock) —
+# never the local clock, avoiding clock-skew false positives across machines.
+squad_children_checkpoint() {
+  command -v multica >/dev/null 2>&1 || return 0
+  command -v python3 >/dev/null 2>&1 || return 0
+  [[ -f "$LOOP_JSON" ]] || return 0
+  local _children
+  _children=$(python3 -c "
+import json, sys, re
+ID_RE = re.compile(r'^[A-Za-z0-9._-]{1,64}\$')
+try:
+    v = json.load(open(sys.argv[1])).get('child_issues', [])
+    if isinstance(v, list):
+        print(' '.join(c for c in v if isinstance(c, str) and ID_RE.match(c)))
+except Exception:
+    pass
+" "$LOOP_JSON" 2>/dev/null || true)
+  [[ -n "$_children" ]] || return 0
+
+  local _ck_dir
+  _ck_dir=$(mktemp -d)
+  local _child
+  for _child in $_children; do
+    multica issue get "$_child" --output json \
+      > "${_ck_dir}/${_child}.issue.json" 2>/dev/null || continue
+    multica issue comment list "$_child" --recent 5 --output json \
+      > "${_ck_dir}/${_child}.comments.json" 2>/dev/null || true
+    printf '%s\n' "$_child" >> "${_ck_dir}/manifest.txt"
+  done
+  if [[ ! -f "${_ck_dir}/manifest.txt" ]]; then
+    rm -rf "$_ck_dir"
+    return 0
+  fi
+
+  local _verdict
+  _verdict=$(python3 - "$_ck_dir" "$LOOP_JSON" <<'CHILDREN_PY' || true
+import json, sys, os
+from datetime import datetime
+
+ck_dir, loop_json = sys.argv[1], sys.argv[2]
+
+def parse_ts(s):
+    try:
+        return datetime.fromisoformat(str(s).replace('Z', '+00:00'))
+    except Exception:
+        return None
+
+threshold_min = 120
+try:
+    t = json.load(open(loop_json)).get('squad_stuck_threshold_minutes', 120)
+    if isinstance(t, (int, float)) and 1 <= int(t) <= 100000:
+        threshold_min = int(t)
+except Exception:
+    pass
+
+with open(os.path.join(ck_dir, 'manifest.txt')) as f:
+    children = [l.strip() for l in f if l.strip()]
+
+statuses, last_ts, all_ts = {}, {}, []
+for c in children:
+    try:
+        statuses[c] = str(json.load(open(os.path.join(ck_dir, f'{c}.issue.json'))).get('status', ''))
+    except Exception:
+        statuses[c] = ''
+    try:
+        raw = json.load(open(os.path.join(ck_dir, f'{c}.comments.json')))
+    except Exception:
+        raw = []
+    if isinstance(raw, dict):
+        raw = raw.get('comments') or raw.get('threads') or raw.get('items') or []
+    ts_list = [t for t in (parse_ts(cm.get('created_at', ''))
+               for cm in raw if isinstance(cm, dict)) if t]
+    if ts_list:
+        last_ts[c] = max(ts_list)
+        all_ts.extend(ts_list)
+
+if children and all(statuses.get(c) == 'done' for c in children):
+    print('ALL_DONE')
+    raise SystemExit
+
+if not all_ts:
+    raise SystemExit  # no server timestamps — cannot judge stuckness
+ref = max(all_ts)  # newest server timestamp = reference clock
+stuck = []
+for c in children:
+    if statuses.get(c) == 'done':
+        continue
+    lt = last_ts.get(c)
+    if lt is not None and (ref - lt).total_seconds() / 60.0 > threshold_min:
+        stuck.append(c)
+if stuck:
+    print('STUCK:' + ','.join(stuck))
+CHILDREN_PY
+)
+  rm -rf "$_ck_dir"
+
+  case "$_verdict" in
+    ALL_DONE)
+      python3 -c "
+import json, sys, os
+p = sys.argv[1]
+try:
+    d = json.load(open(p))
+    d['phase'] = 'result'
+    tmp = p + '.tmp'
+    with open(tmp, 'w') as f:
+        json.dump(d, f, indent=2)
+        f.write('\n')
+    os.replace(tmp, p)
+except Exception:
+    sys.exit(0)
+" "$LOOP_JSON" 2>/dev/null || true
+      multica issue comment add "$issue_id" \
+        --content "[phase] execute→result All child issues done; advancing to result phase." \
+        2>/dev/null || log_error "failed to post all-children-done phase comment"
+      ;;
+    STUCK:*)
+      local _stuck="${_verdict#STUCK:}"
+      # rate limit: at most one squad-stuck checkpoint per hour
+      local _stuck_marker
+      _stuck_marker="${ISSUE_STATE_DIR}/squad-stuck-$(date -u +%Y%m%d%H).marker"
+      if [[ ! -f "$_stuck_marker" ]]; then
+        multica issue comment add "$issue_id" \
+          --content "[checkpoint] squad-stuck | no recent activity (>threshold) from: ${_stuck}. Check member issues or reassign." \
+          2>/dev/null && touch "$_stuck_marker" \
+          || log_error "failed to post squad-stuck checkpoint"
+      fi
+      ;;
+  esac
+}
+
 squad_leader_audit() {
   local _squad_marker="## Squad Operating Protocol"
   local _claude_md="${MULTICA_WORKDIR}/CLAUDE.md"
@@ -285,6 +425,8 @@ squad_leader_audit() {
       fi
       rm -f "$_marker_file"
     fi
+    # REQ-04-04: leader-only child progress checkpoint
+    squad_children_checkpoint || true
   fi
 }
 

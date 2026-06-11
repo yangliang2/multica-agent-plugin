@@ -188,9 +188,26 @@ are captured as repo-scoped learnings (confidence=9).
 |-----------|--------|
 | >$MULTICA_CONTEXT_CHECKPOINT_PCT% | Continue work |
 | ≤$MULTICA_CONTEXT_CHECKPOINT_PCT% | Write checkpoint comment before complex work |
-| ≤$MULTICA_CONTEXT_BLOCKED_PCT% | Checkpoint + set status `blocked` with reason "context-budget-critical" |
+| ≤$MULTICA_CONTEXT_BLOCKED_PCT% | **Graceful handoff** (see below) — exit 0, never `blocked` |
 
 Checkpoint format: `[checkpoint] Completed: <done>. Remaining: <left>. Context: <N>% remaining.`
+
+### Graceful Handoff (REQ-06-03)
+
+Context exhaustion is an internal resource limit, not a user decision point —
+`blocked` would wait for an `on_comment` that never comes. When remaining
+context drops to ≤$MULTICA_CONTEXT_BLOCKED_PCT%:
+
+1. **Wrap up** the current sub-step at the nearest safe point (do not start new work).
+2. **Persist progress** to `loop.json.progress`:
+   - `progress.current_step` — the sub-step to resume from
+   - `progress.completed_steps` — list of finished sub-steps
+   - `progress.pct` — overall completion estimate (0–100)
+   - `progress.summary` — one line of orientation for the next session
+3. **Post** `[checkpoint] context-handoff | progress: <pct>%` via `<<cli:issue.comment.add>>`.
+4. **Exit 0.** Do NOT set status `blocked`; do NOT post HITL. The daemon
+   relaunches a fresh session on the same issue automatically; session-start
+   injects `progress.current_step` so work resumes exactly where it stopped.
 
 ---
 

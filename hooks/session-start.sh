@@ -381,6 +381,40 @@ except Exception:
 
       context_parts+=("## Loop State"$'\n'"$loop_hint")
 
+      # REQ-06-03: resume hint from persisted progress (context-budget handoff).
+      # A previous session may have exited at <25% context after saving its
+      # position; inject it so work continues instead of restarting.
+      _progress_hint=$(python3 -c "
+import json, sys
+try:
+    p = json.load(open(sys.argv[1])).get('progress', {})
+    if not isinstance(p, dict):
+        raise SystemExit
+    def clean(s, n):
+        return ' '.join(str(s).split())[:n]
+    parts = []
+    cur = clean(p.get('current_step', ''), 200)
+    if cur:
+        parts.append(f'Resume from sub-step: {cur}')
+    pct = p.get('pct', None)
+    if isinstance(pct, (int, float)):
+        parts.append(f'{int(pct)}% complete')
+    done = p.get('completed_steps', [])
+    if isinstance(done, list) and done:
+        parts.append('Done: ' + ', '.join(clean(s, 80) for s in done[:10]))
+    summary = clean(p.get('summary', ''), 200)
+    if summary:
+        parts.append(summary)
+    if parts:
+        print(' | '.join(parts))
+except Exception:
+    pass
+" "$LOOP_JSON" 2>/dev/null || true)
+      if [[ -n "${_progress_hint:-}" ]]; then
+        context_parts+=("## Saved Progress (context handoff)"$'\n'"${_progress_hint}
+This was persisted by a previous session before a context-budget handoff. Continue from the saved sub-step; do not restart completed steps.")
+      fi
+
       # v2.3.0: inject phase-specific action guidance
       _phase_guidance=""
       case "$phase" in

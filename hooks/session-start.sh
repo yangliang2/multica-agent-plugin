@@ -258,45 +258,67 @@ if [[ -n "$issue_id" ]]; then
     # for [verification] command="..." and store it in loop.json. Immutable
     # once set: a non-empty verification_cmd is never overwritten, so the same
     # command is used across all verify attempts.
-    _vc_existing=$(python3 -c "
+    # REQ-04-01: planning mode detection — epic keywords (epic|initiative|
+    # roadmap) in the issue title set loop.json.mode=planning. Detected once:
+    # an explicit mode key in loop.json is never overwritten.
+    # Both share one `multica issue get` call (R4: one fetch per session max).
+    _discovery_needed=$(python3 -c "
 import json, sys
 try:
-    print(json.load(open(sys.argv[1])).get('verification_cmd', ''))
+    d = json.load(open(sys.argv[1]))
+    need = (not d.get('verification_cmd')) or ('mode' not in d)
+    print('yes' if need else 'no')
 except Exception:
-    print('')
-" "$LOOP_JSON" 2>/dev/null || echo "")
-    if [[ -z "$_vc_existing" ]] && command -v multica >/dev/null 2>&1; then
+    print('no')
+" "$LOOP_JSON" 2>/dev/null || echo "no")
+    if [[ "$_discovery_needed" == "yes" ]] && command -v multica >/dev/null 2>&1; then
       _issue_get_tmp=$(mktemp)
       if multica issue get "$issue_id" --output json > "$_issue_get_tmp" 2>/dev/null; then
-        python3 - "$_issue_get_tmp" "$LOOP_JSON" <<'VCMD_PY' || true
+        python3 - "$_issue_get_tmp" "$LOOP_JSON" <<'DISCOVERY_PY' || true
 import json, sys, os, re
 issue_file, loop_json = sys.argv[1], sys.argv[2]
 try:
     issue = json.load(open(issue_file))
 except Exception:
     sys.exit(0)
-desc = ''
-for k in ('description', 'body', 'content'):
-    v = issue.get(k)
-    if isinstance(v, str) and v:
-        desc = v
-        break
-m = re.search(r'\[verification\]\s+command="([^"\n]{1,512})"', desc)
-if not m:
-    sys.exit(0)
 try:
     d = json.load(open(loop_json))
 except Exception:
     sys.exit(0)
-if d.get('verification_cmd'):
-    sys.exit(0)  # immutable once set
-d['verification_cmd'] = m.group(1)
-tmp = loop_json + '.tmp'
-with open(tmp, 'w') as f:
-    json.dump(d, f, indent=2)
-    f.write('\n')
-os.replace(tmp, loop_json)
-VCMD_PY
+
+changed = False
+
+# REQ-07-01: verification_cmd from description (immutable once set)
+if not d.get('verification_cmd'):
+    desc = ''
+    for k in ('description', 'body', 'content'):
+        v = issue.get(k)
+        if isinstance(v, str) and v:
+            desc = v
+            break
+    m = re.search(r'\[verification\]\s+command="([^"\n]{1,512})"', desc)
+    if m:
+        d['verification_cmd'] = m.group(1)
+        changed = True
+
+# REQ-04-01: planning mode from title keywords. Detected exactly once: the
+# result (planning OR execution) is written explicitly so later sessions
+# don't re-fetch the issue, and an existing mode key is never overwritten.
+if 'mode' not in d:
+    title = issue.get('title', '')
+    if isinstance(title, str) and re.search(r'\b(epic|initiative|roadmap)\b', title, re.IGNORECASE):
+        d['mode'] = 'planning'
+    else:
+        d['mode'] = 'execution'
+    changed = True
+
+if changed:
+    tmp = loop_json + '.tmp'
+    with open(tmp, 'w') as f:
+        json.dump(d, f, indent=2)
+        f.write('\n')
+    os.replace(tmp, loop_json)
+DISCOVERY_PY
       fi
       rm -f "$_issue_get_tmp"
     fi
@@ -383,6 +405,16 @@ except Exception:
       esac
       if [[ -n "$_phase_guidance" ]]; then
         context_parts+=("## Phase Guidance"$'\n'"$_phase_guidance")
+      fi
+
+      # REQ-04-01: planning mode — decomposition only, no implementation
+      if [[ "${loop_mode:-execution}" == "planning" ]]; then
+        context_parts+=("## Planning Mode"$'\n'"This issue is a macro task (epic/initiative/roadmap). Planning mode rules:
+1. Do NOT implement anything — planning mode is pure decomposition.
+2. discover: fetch issue + comments (<<cli:issue.get>>, <<cli:issue.comment.list>>); explore the codebase read-only.
+3. Post a [breakdown:vN] comment listing child tasks with effort estimates and a dependency graph, then exit 0.
+4. Wait for the user's [proceed] or [revise: ...] reply before creating any child issues.
+5. After [proceed]: create child issues (<<cli:issue.create.child>>) with parent_id/epic_id/squad_id metadata and blocks: links — see skills/core/squad-leader-workflow.md, Planning Mode section.")
       fi
     fi
 

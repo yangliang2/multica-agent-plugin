@@ -170,7 +170,42 @@ If the same `question_id` appears three or more times across all comments:
 
 ---
 
-## 9. Daemon-Safe Operating Rules
+## 9. Planning Mode (v2.3.0 — REQ-04-01/02)
+
+**Trigger:** `loop.json.mode == "planning"` — set automatically at session start when
+the issue title contains an epic keyword (`epic`, `initiative`, `roadmap`).
+
+**Iron rule:** planning mode is pure decomposition. NO implementation, no file edits,
+no test runs — only read-only exploration and breakdown authoring.
+
+**Flow:**
+
+1. **discover** — `<<cli:issue.get>>` + `<<cli:issue.comment.list>>`; explore the
+   codebase read-only to understand scope and seams.
+2. **breakdown** — post a `[breakdown:vN]` comment (vN increments on each revision):
+   ```
+   [breakdown:v1]
+   | # | Child task | Effort | Depends on |
+   |---|-----------|--------|------------|
+   | 1 | <title>   | S/M/L  | —          |
+   | 2 | <title>   | M      | 1          |
+   ```
+   Include a short dependency-graph note. Then **exit 0** — the user reviews asynchronously.
+3. **await approval** — next session is triggered by the user's comment:
+   - `[proceed]` → create child issues (step 4)
+   - `[revise: <feedback>]` → incorporate feedback, post `[breakdown:vN+1]`, exit 0 again
+4. **create children** — one `<<cli:issue.create.child>>` per breakdown row, with
+   metadata: `parent_id` (this issue), `epic_id` (this issue or its epic), `squad_id`
+   (from roster), and `blocks:` links following the dependency column. Assign members
+   per the capacity check (Section 3).
+5. After creation, post `[phase] plan→execute` summary listing the child issue IDs,
+   then coordinate per the normal leader workflow.
+
+See `docs/adr/0002-child-issue-linking.md` for the linking schema rationale.
+
+---
+
+## 10. Daemon-Safe Operating Rules
 
 - Never call `AskUserQuestion`. The leader runs headless.
 - `no_action` turns: call `<<cli:squad.activity>> outcome=no_action`, write the marker, exit. No comment.
@@ -179,7 +214,7 @@ If the same `question_id` appears three or more times across all comments:
 
 ---
 
-## 10. Turn Checklist
+## 11. Turn Checklist
 
 - [ ] All delegatable tasks delegated via the correct strategy (A or B).
 - [ ] No double-fire: no task dispatched via both A and B.

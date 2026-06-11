@@ -2,6 +2,33 @@
 
 ## [2.3.0] - 2026-06-01
 
+### Added (T09 — planning mode, REQ-04-01/02)
+
+- **Planning mode detection** (`hooks/session-start.sh`): epic keywords
+  (`epic` | `initiative` | `roadmap`) in the issue title set
+  `loop.json.mode=planning`. Detected exactly once — the result (planning OR
+  execution) is written explicitly so later sessions skip the issue fetch, and
+  an existing `mode` key is never overwritten. Shares one `multica issue get`
+  call with the T08 verification-cmd discovery (one fetch per session max).
+
+- **Planning Mode context injection**: planning sessions get strict
+  decomposition-only rules — read-only exploration, post `[breakdown:vN]` with
+  effort estimates + dependency graph, exit 0, await `[proceed]`/`[revise:]`,
+  then create child issues with `parent_id`/`epic_id`/`squad_id` metadata and
+  `blocks:` links.
+
+- **`skills/core/squad-leader-workflow.md`**: new "Planning Mode" section
+  (breakdown table format, revision loop, child-creation step wired to the
+  capacity check).
+
+- **`docs/adr/0002-child-issue-linking.md`**: ADR documenting the child-issue
+  metadata schema (`parent_id`/`epic_id`/`squad_id`/`blocks:`) and why issue
+  metadata is the only viable channel for multi-machine squads.
+
+- **Tests**: `tests/smoke/test-session-start-planning-mode.sh` (6 cases:
+  detection, breakdown reference, plain-title default, immutability,
+  single-fetch guarantee, valid JSON).
+
 ### Added (T08 — verification runner, REQ-07-01/02/03)
 
 - **`tools/run-verification.sh`**: program-enforced verification runner. Resolves

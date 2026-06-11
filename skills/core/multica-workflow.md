@@ -222,7 +222,7 @@ Old v2.2.0 files that lack v2.3.0 fields remain valid.
 | `last_updated` | string | `""` | ISO 8601 timestamp of last write |
 | `nonce` | string | `""` | DONE-signal nonce for this session |
 | `evidence_file` | string | `""` | Path to verification evidence artifact |
-| `mode` | string | `"execution"` | Loop execution mode (v2.3.0+) |
+| `mode` | string | `"execution"` | `execution` or `planning`. Set once at session start: epic keywords (epic/initiative/roadmap) in the issue title → `planning` (decomposition only, no implementation); an existing key is never overwritten (v2.3.0+) |
 | `spec_version` | integer | `0` | Schema version; 0 = v2.2.0 compat, 1 = v2.3.0 (v2.3.0+) |
 | `verification_cmd` | string | `""` | Shell command to run during verify phase (v2.3.0+) |
 | `progress.summary` | string | `""` | Human-readable progress summary (v2.3.0+) |

@@ -49,6 +49,8 @@ run_test "test-stop-correction-capture.sh"
 run_test "test-curate-decay.sh"
 run_test "test-session-start-corrections.sh"
 run_test "test-session-start-hitl-replay.sh"
+run_test "test-run-verification.sh"
+run_test "test-session-start-verification-discovery.sh"
 
 echo ""
 echo "Results: ${PASS} passed, ${FAIL} failed, ${SKIP} skipped"

@@ -103,12 +103,17 @@ are captured as repo-scoped learnings (confidence=9).
 **Entry condition:** Prior phase was "execute" and all steps complete, or resuming mid-verify.
 
 **Actions:**
-1. Run verification_cmd from loop.json (default: npm test / pytest / cargo test / go test by ecosystem)
-2. Collect evidence: exit_code, command, output_hash (SHA256 first 8 chars)
-3. Detect flaky: same output_hash but differing exit_codes across attempts → tag flaky-suspect, allow retry
-4. Post `[verification]` comment with: exit_code, command, output_hash, category (syntax|import|assertion|timeout|permission)
-5. On failure: attempt fix in same session and re-verify (max 3 attempts)
-6. After 3 failures: post `[verify-failed]` comment, advance to result phase
+1. Run `bash $MULTICA_PLUGIN_ROOT/tools/run-verification.sh {issue_id}` — it resolves the
+   command (loop.json.verification_cmd, else ecosystem default: npm test / pytest /
+   cargo test / go test), captures evidence (exit_code, command, output_hash = SHA256
+   first 8 chars), categorizes failures, and detects flaky-suspect runs (same
+   output_hash, differing exit_codes across attempts in verify-attempts.jsonl)
+2. Post its stdout as the `[verification]` comment (includes category=syntax|import|
+   assertion|timeout|permission|unknown on failure, flaky_suspect=true when detected)
+3. On failure: read `category=` to steer the fix — do not blindly retry the same change;
+   flaky_suspect=true → retry once before treating as a real failure
+4. Attempt fix in same session and re-verify (max 3 attempts)
+5. After 3 failures: post `[verify-failed]` comment, advance to result phase
 
 **Exit:** exit 0 → phase=result
 

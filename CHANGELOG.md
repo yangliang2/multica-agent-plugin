@@ -2,6 +2,31 @@
 
 ## [2.3.0] - 2026-06-01
 
+### Added (T08 — verification runner, REQ-07-01/02/03)
+
+- **`tools/run-verification.sh`**: program-enforced verification runner. Resolves
+  the command (argument > `loop.json.verification_cmd` > ecosystem default:
+  npm test / pytest / cargo test / go test), runs it fresh, computes
+  `output_hash` (first 8 hex of SHA256), categorizes failures
+  (`syntax | import | timeout | permission | assertion | unknown`), detects
+  flaky-suspect runs (same `output_hash`, different exit codes across attempts
+  recorded in `.multica/state/{issue}/verify-attempts.jsonl`), and prints the
+  ready-to-post `[verification]` comment body. Exit code = the verification
+  command's exit code.
+
+- **Verification command discovery** (`hooks/session-start.sh`): the issue
+  description's `[verification] command="..."` directive is parsed once and
+  stored in `loop.json.verification_cmd`. Immutable once set — the same command
+  is used across all verify attempts (REQ-07-01). Discovered command surfaces
+  in the Loop State hint.
+
+- **Docs**: `skills/core/verification.md` gains a "Program-Enforced Runner"
+  section; `multica-workflow.md` verify phase now instructs using the runner
+  and reading `category=` to steer fixes instead of blind retries.
+
+- **Tests**: `tests/smoke/test-run-verification.sh` (5 cases) and
+  `test-session-start-verification-discovery.sh` (4 cases).
+
 ### Added (T07 — HITL replay, REQ-06-01/02)
 
 - **HITL state tracking** (`loop.json`): new `open_hitls` / `resolved_hitls`

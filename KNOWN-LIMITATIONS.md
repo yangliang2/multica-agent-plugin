@@ -38,21 +38,33 @@ checkpoint comments.
 
 ## Destructive Guard Is a Convenience Check, Not a Security Control
 
-`hooks/pre-tool.sh` checks tool calls against `tools/safe-exec.deny.list` using
-substring matching (`grep -qiF`). This is a **convenience check to catch
-accidental misuse**, not a security control. It **cannot** prevent a determined
-agent or user from bypassing it via:
+`hooks/pre-tool.sh` checks Bash tool calls against `tools/safe-exec.deny.list`
+(ERE patterns, `grep -qiE`, matched against both the raw and a
+whitespace-normalized form of the command). Since v2.3.0 it is a hybrid:
+`tools/safe-exec.allow.list` can rescue a command from a **non-critical** deny
+match (e.g. a project-specific `rm -rf /tmp/build/`), while patterns listed in
+`tools/safe-exec.critical.list` (reverse shells, `rm -rf /`, `curl|bash`,
+disk overwrite, encoded payloads) can **never** be rescued. All decisions —
+ALLOW, DENY, ALLOW_OVERRIDE, BYPASS_ATTEMPT — are logged to
+`.multica/safe-exec.log`. A denied command that also carries an obfuscation
+construct (`$(...)`, backticks, heredocs, `eval`) is tagged `[BYPASS_ATTEMPT]`
+and the issue is set `blocked` for human review.
 
-- Double spaces (`rm -rf  /`), flag reordering (`rm -fr /`)
-- Shell wrappers (`bash -c 'rm -rf /'`, `eval`, heredocs)
-- Commands not in the deny list (`find / -delete`, `git clean -fdx`)
+This remains a **convenience check to catch accidental misuse**, not a
+security boundary. It **cannot** prevent a determined agent or user from
+bypassing it via:
+
+- Novel encodings or multi-step staging the patterns don't cover
+- Shell wrappers that assemble the command at runtime (`bash -c "$var"`)
+- Commands simply not in the deny list (`git clean -fdx`, `shred`)
 
 The `multica safe-exec` subcommand does not exist in the multica CLI.
 
 **Do not rely on this check to enforce security policy.** For production
 multi-tenant deployments, use OS-level sandboxing (containers, namespaces) or
 a proper allowlist at the executor level. To extend the convenience patterns,
-edit `tools/safe-exec.deny.list` directly.
+edit `tools/safe-exec.deny.list` (and mirror high-severity additions into
+`tools/safe-exec.critical.list`).
 
 ## Post-MVP Harness Extension Paths
 

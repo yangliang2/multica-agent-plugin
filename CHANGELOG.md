@@ -5,6 +5,35 @@
 > In development. Section headings carry the date each batch landed; the
 > version date is set at release (GA target: 2026-09-07).
 
+### Added (T12 — safe-exec hybrid guard, REQ-08-01/02) — 2026-06-11
+
+- **Hybrid allowlist** (`hooks/pre-tool.sh` + `tools/safe-exec.allow.list` +
+  `tools/safe-exec.critical.list`): an allow pattern can rescue a command from
+  a non-critical deny match (e.g. a project-specific `git reset --hard
+  origin/...`); patterns listed in `critical.list` (reverse shells, `rm -rf /`,
+  `curl|bash`, disk overwrite, encoded payloads) can NEVER be rescued.
+  `critical.list` is a separate file (not in-line annotations) so older
+  installed hooks that only read `deny.list` keep blocking everything —
+  version skew fails safe.
+
+- **Decision log** (`.multica/safe-exec.log`): every decision — ALLOW, DENY,
+  ALLOW_OVERRIDE, BYPASS_ATTEMPT — is logged with a command hash (file only,
+  never stdout).
+
+- **Obfuscation detection** (REQ-08-02, scoped per 2026-06-11 decision):
+  commands are matched in both raw and whitespace-normalized form; a denied
+  command that also carries `$(...)`, backticks, a heredoc, or `eval` is tagged
+  `[BYPASS_ATTEMPT]`, the issue is set `blocked`, and the guard comment carries
+  the tag. New deny patterns for `xxd -r`/hex-printf payloads piped to shells
+  and `eval` of decoded content. Normal command substitution in non-denied
+  commands is untouched.
+
+- **Docs**: KNOWN-LIMITATIONS rewritten for the hybrid model (it also wrongly
+  said matching was substring `grep -qiF` — it has been ERE since v1.6.0);
+  REQUIREMENTS EPIC-08 tag `[NEEDS-DISCUSSION]` → `[READY]` with decisions.
+
+- **Tests**: `tests/smoke/test-pretool-allowlist.sh` (6 cases).
+
 ### Changed (T11 — context-budget graceful handoff, REQ-06-03) — 2026-06-11
 
 - **Context exhaustion no longer sets `blocked`**

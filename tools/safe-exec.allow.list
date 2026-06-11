@@ -1,0 +1,16 @@
+# safe-exec.allow.list — ERE patterns that rescue a command from a NON-critical
+# deny match (REQ-08-01). One pattern per line; # comments and blank lines
+# ignored. Matched case-insensitively against the whitespace-normalized command.
+#
+# Scope rules (decision 2026-06-11):
+# - An allow match overrides only non-critical deny patterns.
+# - Patterns listed in safe-exec.critical.list (reverse shells, rm -rf /,
+#   curl|bash, disk overwrite, ...) can NEVER be rescued.
+# - Every override is logged to .multica/safe-exec.log as ALLOW_OVERRIDE.
+#
+# Ships empty. Add narrow, project-specific rescues; keep them as specific as
+# possible (anchor paths/remotes), e.g.:
+#
+#   ^git push --force-with-lease origin (feat|fix)/
+#   ^rm -rf /tmp/build/
+#   ^find \./node_modules .*-delete

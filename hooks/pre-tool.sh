@@ -26,6 +26,12 @@ fi
 MULTICA_WORKDIR="${MULTICA_WORKDIR:-$(pwd)}"
 PLUGIN_ROOT="${MULTICA_PLUGIN_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
 DENY_LIST="${PLUGIN_ROOT}/tools/safe-exec.deny.list"
+# REQ-08-01: hybrid lists. allow.list rescues non-critical deny matches;
+# critical.list names the deny patterns that can never be rescued. Both are
+# optional — absence means no overrides / no criticals beyond default-deny.
+ALLOW_LIST="${PLUGIN_ROOT}/tools/safe-exec.allow.list"
+CRITICAL_LIST="${PLUGIN_ROOT}/tools/safe-exec.critical.list"
+SAFE_EXEC_LOG="${MULTICA_WORKDIR}/.multica/safe-exec.log"
 
 issue_id=""
 if [[ -n "${MULTICA_ISSUE_ID:-}" ]]; then
@@ -134,16 +140,68 @@ else
   _cmd_display="${command_str:0:80}… (${_cmd_len} chars, sha256:${_cmd_hash})"
 fi
 
+# REQ-08-01: every decision is logged to a file (never stdout — hook protocol)
+log_decision() {
+  mkdir -p "$(dirname "$SAFE_EXEC_LOG")"
+  echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] $* cmd_sha256=${_cmd_hash} issue=${issue_id:-none}" \
+    >> "$SAFE_EXEC_LOG" 2>/dev/null || true
+}
+
+# REQ-08-02: whitespace normalization closes spacing-based obfuscation of
+# single-\s patterns (tabs, runs of spaces); both forms are matched.
+_normalized=$(printf '%s' "$command_str" | tr '\t' ' ' | sed -E 's/ +/ /g')
+
+_blocked_pattern=""
 while IFS= read -r pattern; do
   [[ -z "$pattern" || "$pattern" == \#* ]] && continue
-  if printf '%s' "$command_str" | grep -qiE "$pattern" 2>/dev/null; then
-    if _rate_check_and_record; then
-      post_comment "[destructive-guard] Tool call blocked — matched deny pattern: \`${pattern}\`
-Command: \`${_cmd_display}\`
-To override, run the command manually outside the daemon."
+  if printf '%s' "$_normalized" | grep -qiE "$pattern" 2>/dev/null \
+     || printf '%s' "$command_str" | grep -qiE "$pattern" 2>/dev/null; then
+    # Critical patterns (byte-identical line in critical.list) are never rescued
+    if [[ -f "$CRITICAL_LIST" ]] && grep -qFx "$pattern" "$CRITICAL_LIST" 2>/dev/null; then
+      _blocked_pattern="$pattern"
+      break
     fi
-    exit 1
+    # Non-critical: the allowlist may rescue a false positive (REQ-08-01)
+    _rescued=false
+    if [[ -f "$ALLOW_LIST" ]]; then
+      while IFS= read -r allow_pat; do
+        [[ -z "$allow_pat" || "$allow_pat" == \#* ]] && continue
+        if printf '%s' "$_normalized" | grep -qiE "$allow_pat" 2>/dev/null; then
+          _rescued=true
+          log_decision "ALLOW_OVERRIDE deny_pattern=${pattern} allow_pattern=${allow_pat}"
+          break
+        fi
+      done < "$ALLOW_LIST"
+    fi
+    if [[ "$_rescued" == "false" ]]; then
+      _blocked_pattern="$pattern"
+      break
+    fi
   fi
 done < "$DENY_LIST"
 
+if [[ -n "$_blocked_pattern" ]]; then
+  # REQ-08-02: a denied command that also carries an obfuscation construct
+  # (command substitution, backticks, heredoc, eval) is tagged BYPASS_ATTEMPT
+  # and the issue is set blocked for human review.
+  _bypass_tag=""
+  if printf '%s' "$command_str" | grep -qE '\$\(|`|<<|(^|[;&| ])eval[ "]' 2>/dev/null; then
+    _bypass_tag=" [BYPASS_ATTEMPT]"
+    log_decision "BYPASS_ATTEMPT pattern=${_blocked_pattern}"
+    if [[ -n "$issue_id" ]] && command -v multica >/dev/null 2>&1; then
+      multica issue status "$issue_id" blocked 2>/dev/null \
+        || log_error "failed to set blocked on bypass attempt"
+    fi
+  else
+    log_decision "DENY pattern=${_blocked_pattern}"
+  fi
+  if _rate_check_and_record; then
+    post_comment "[destructive-guard]${_bypass_tag} Tool call blocked — matched deny pattern: \`${_blocked_pattern}\`
+Command: \`${_cmd_display}\`
+To override, run the command manually outside the daemon."
+  fi
+  exit 1
+fi
+
+log_decision "ALLOW"
 exit 0

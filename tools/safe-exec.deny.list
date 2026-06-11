@@ -55,3 +55,8 @@ socat\s+.*exec:
 # Python/Perl/Ruby one-liner remote execution
 python[23]?\s+-c\s+["'].*__(import|exec|eval)
 perl\s+-e\s+["'].*system\s*\(
+
+# Obfuscated payload execution (REQ-08-02)
+xxd\s+-r.*\|\s*(bash|sh|zsh)
+eval\s+.*(base64|xxd\s+-r)
+printf\s+.*\\\\x.*\|\s*(bash|sh)

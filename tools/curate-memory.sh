@@ -12,8 +12,15 @@ python3 - "$LEARNINGS" "$ARCHIVE" "$NOW_EPOCH" << 'PYEOF'
 import json
 import os
 import sys
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
+
+
+def parse_iso(ts):
+    try:
+        return datetime.fromisoformat(ts.replace("Z", "+00:00"))
+    except (ValueError, OSError, AttributeError):
+        return None
 
 
 def curate(learnings_path, archive_path, now_epoch):
@@ -40,27 +47,34 @@ def curate(learnings_path, archive_path, now_epoch):
 
     deduped = list(seen.values()) + keyless
 
+    # REQ-05-04: decay -1 per week since recorded_at, floor at 1. The decay is
+    # persisted, so last_decayed_at tracks how far decay has already been
+    # applied — repeated curate runs must not re-decay the same weeks.
+    log_path = str(Path(learnings_path).parent / "curate-memory.log")
     active = []
     to_archive = []
     for e in deduped:
-        ts = e.get("ts", "")
-        age_days = 0
-        if ts:
-            try:
-                dt = datetime.fromisoformat(ts.replace("Z", "+00:00"))
-                age_days = (now_epoch - dt.timestamp()) / 86400
-            except (ValueError, OSError):
-                age_days = 0
-
         conf = int(e.get("confidence", 5))
-        if age_days > 180:
-            conf -= 4
-        elif age_days > 90:
-            conf -= 2
 
-        e["confidence"] = max(0, conf)
+        anchor = parse_iso(
+            e.get("last_decayed_at") or e.get("recorded_at") or e.get("ts") or ""
+        )
+        if anchor is not None:
+            weeks = int(max(0.0, now_epoch - anchor.timestamp()) // (7 * 86400))
+            if weeks > 0:
+                conf = max(1, conf - weeks)
+                e["last_decayed_at"] = (anchor + timedelta(weeks=weeks)).strftime(
+                    "%Y-%m-%dT%H:%M:%SZ"
+                )
+        e["confidence"] = conf
 
-        if e["confidence"] < 3:
+        # Prune only when confidence < 4 AND no correction signal (recurrence
+        # resets recorded_at to now) has been seen in the last 30 days.
+        recorded = parse_iso(e.get("recorded_at") or e.get("ts") or "")
+        recorded_age_days = (
+            (now_epoch - recorded.timestamp()) / 86400 if recorded is not None else 0
+        )
+        if conf < 4 and recorded_age_days > 30:
             to_archive.append(e)
         else:
             active.append(e)
@@ -69,6 +83,12 @@ def curate(learnings_path, archive_path, now_epoch):
         with open(archive_path, "a", encoding="utf-8") as f:
             for e in to_archive:
                 f.write(json.dumps(e) + "\n")
+        # No silent removal: every pruned entry is logged (REQ-05-04)
+        with open(log_path, "a", encoding="utf-8") as f:
+            for e in to_archive:
+                f.write(
+                    f"[learning-pruned key={e.get('key', '')} confidence={e['confidence']}]\n"
+                )
 
     tmp = learnings_path + ".tmp"
     with open(tmp, "w", encoding="utf-8") as f:

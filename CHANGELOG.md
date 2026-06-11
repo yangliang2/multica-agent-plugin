@@ -5,6 +5,26 @@
 > In development. Section headings carry the date each batch landed; the
 > version date is set at release (GA target: 2026-09-07).
 
+### Changed (T11 — context-budget graceful handoff, REQ-06-03) — 2026-06-11
+
+- **Context exhaustion no longer sets `blocked`**
+  (`skills/core/multica-workflow.md`): at ≤`$MULTICA_CONTEXT_BLOCKED_PCT`%
+  remaining the agent now wraps up the current sub-step, persists
+  `loop.json.progress` (`current_step`, `completed_steps`, `pct`, `summary`),
+  posts `[checkpoint] context-handoff | progress: <pct>%`, and **exits 0** —
+  the daemon relaunches a fresh session automatically. `blocked` waits for an
+  `on_comment` that never comes for an internal resource limit (corrected AC,
+  REQ-06-03).
+
+- **Progress resume injection** (`hooks/session-start.sh`): when
+  `loop.json.progress` is present, a "Saved Progress (context handoff)"
+  context section tells the next session exactly where to resume (sub-step,
+  pct, completed steps) — no restarting finished work. Strings are
+  whitespace-normalized and length-capped before injection.
+
+- **Tests**: `tests/smoke/test-session-start-progress-resume.sh` (4 cases).
+  `docs/REQUIREMENTS.md` REQ-06-03 tag updated `[CORRECTION-NEEDED]` → `[READY]`.
+
 ### Added (T10 — squad coordination, REQ-04-03/04) — 2026-06-11
 
 - **Member metadata protocol** (`skills/core/squad-member-workflow.md`): members

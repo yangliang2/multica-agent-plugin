@@ -53,6 +53,7 @@ run_test "test-run-verification.sh"
 run_test "test-session-start-verification-discovery.sh"
 run_test "test-session-start-planning-mode.sh"
 run_test "test-stop-squad-checkpoint.sh"
+run_test "test-session-start-progress-resume.sh"
 
 echo ""
 echo "Results: ${PASS} passed, ${FAIL} failed, ${SKIP} skipped"

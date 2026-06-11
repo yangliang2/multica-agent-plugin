@@ -395,7 +395,7 @@ Rationale: Current v2.2.0 holds long sessions open until completion signal, bloc
   - Moves HITL from open_hitls to resolved_hitls with answer
   - Does not re-post HITL if answer already present
 
-**REQ-06-03: Context-Budget Handoff (Internal Checkpoint Only)** `[CORRECTION-NEEDED]`
+**REQ-06-03: Context-Budget Handoff (Internal Checkpoint Only)** `[READY]` *(correction applied 2026-06-09; implemented 2026-06-11)*
 - **Description:** When context budget is near exhaustion, agent does a graceful handoff rather than setting blocked. Blocked requires on_comment to reactivate — wrong for an internal resource constraint.
 - **Priority:** P2 (reviewer noise reduction)
 - **Affected Files:**
